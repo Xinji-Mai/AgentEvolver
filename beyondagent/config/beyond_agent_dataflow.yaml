@@ -1,0 +1,41 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  max_prompt_length: 1024
+  max_response_length: 1024
+  train_batch_size: 256
+  val_batch_size: 256
+  return_raw_chat: True
+
+actor_rollout_ref:
+  hybrid_engine: True
+  rollout:
+    name: vllm
+    mode: async
+    multi_turn:
+      format: qwen
+      # tool_config_path: "./config/tool_config/gsm8k_tool_config.yaml"
+    custom_dataflow_cls:
+      path: ""
+      name: ""
+
+beyond_agent:
+  enable_summary: True
+  enable_context: True
+  # base_url: "http://127.0.0.1:8000"
+  base_url: "http://10.1.8.169:8000"
+  # base_url: "http://47.97.187.161:8000"
+  context_class_path: "beyondagent.core.module.context_generator.base_context_generator"
+  context_class_name: "MockContextGenerator"
+  context_config_path: "beyondagent/config/empty.json"
+  summarize_batch_size: 100
+  summarize_mini_batch_size: 10
+  summarizer_class_path: "beyondagent.core.module.summarizer.base_summarizer"
+  summarizer_class_name: "MockSummarizer"
+  summarizer_config_path: "beyondagent/config/empty.json"
