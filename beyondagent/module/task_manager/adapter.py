@@ -94,7 +94,7 @@ class OnflyRlDataset(IterableDataset):
 
     @property
     def num_rest_data(self) -> int:
-        return sum([len(d) for d in self._datasets[self._cur_dataset :]])
+        return sum([len(d) for d in self._datasets[self._cur_dataset :]])-(self._cur - self._passed_datasets_cnt)
 
     def append_dataset(self, dataset: RLHFDataset):
         self._datasets.append(dataset)
