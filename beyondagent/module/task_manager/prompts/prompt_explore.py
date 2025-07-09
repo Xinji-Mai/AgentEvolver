@@ -56,29 +56,6 @@ def get_agent_interaction_system_prompt(
     return AGENT_INTERACTION_SYSTEM_PROMPT.format(old_objectives="\n".join(objectives))
 
 
-def parse_action_from_response(response: str) -> str:
-    """从响应中解析动作"""
-    try:
-        # 解析<action>标签中的动作
-        start_tag = "<action>"
-        end_tag = "</action>"
-        start_idx = response.find(start_tag)
-        end_idx = response.find(end_tag)
-
-        if start_idx != -1 and end_idx != -1:
-            action = response[start_idx + len(start_tag) : end_idx].strip()
-            return action
-        else:
-            # 如果没有找到标签，尝试提取第一行有意义的文本
-            lines = response.strip().split("\n")
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith("#") and not line.startswith("**"):
-                    return line
-
-        return "invalid action"  # 默认动作
-    except Exception:
-        return "invalid action"  # 默认动作
 
 
-__all__ = ["get_agent_interaction_system_prompt", "parse_action_from_response"]
+__all__ = ["get_agent_interaction_system_prompt"]

@@ -165,13 +165,13 @@ class TaskManager(object):
         """
         if not os.path.exists(filepath):
             logger.info("no persistent file, exploring tasks. this will take a while...")
-            objectives=self.generate_task(tasks,show_progress=True)
+            objectives=self.generate_task(tasks[:1],show_progress=True) # FIXME: debug
             with open(filepath,"w") as f:
-                json.dump(objectives,f)
+                    f.writelines([ob.json() for ob in objectives])
         else:
             logger.info("loading persistent file...")
             with open(filepath,"r") as f:
-                objectives=json.load(f)
+                objectives=[TaskObjective.parse_raw(line) for line in f.readlines()]
         
         return adapter.to_rl_dataset(objectives,tokenizer=tokenizer,config=config,processor=processor)
     

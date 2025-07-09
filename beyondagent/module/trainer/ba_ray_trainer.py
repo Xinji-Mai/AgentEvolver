@@ -206,9 +206,15 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         self.env_manager = ParallelEnvManager(config=self.config, async_rollout_manager=self.async_rollout_manager, max_parallel=self.config.actor_rollout_ref.rollout.max_env_worker)
         self.thread_pool = ThreadPoolExecutor(max_workers=self.config.thread_pool.max_workers)
         
+        # init task manager
+        if self.config.task_manager.llm_client == 'policy':
+            llm_client=self.async_rollout_manager
+            raise NotImplementedError()
+        else:
+            llm_client=DashScopeClient()
         self.task_manager=TaskManager(
             config=self.config,
-            llm_client=DashScopeClient(), # TODO: use policy model
+            llm_client=llm_client, # TODO: use policy model
             old_retrival=NaiveTaskObjectiveRetrieval(),
             tokenizer=self.tokenizer,
             env_service_url=self.config.env_service.env_url,
@@ -220,12 +226,12 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         if self.config.task_manager.persistent_filepath is None:
             # if no persistent file, we just use the on-the-fly dataset.
             # training data is freshly generated every time.
-            logger.info("use persistent task manager")
+            logger.info("use on-the-fly task manager")
             train_dataset=self.task_manager.get_dataset(tasks=self._train_tasks,bs=self.config.task_manager.bs,tokenizer=self.tokenizer,config=self.config.data)
             train_sampler=self._train_sampler
         else:
             # or we just generate data once and always use it
-            logger.info("use on-the-fly task manager")
+            logger.info("use persistent task manager")
             train_dataset=self.task_manager.load_persistent_dataset(tasks=self._train_tasks,filepath=self.config.task_manager.persistent_filepath,tokenizer=self.tokenizer,config=self.config.data,processor=self.processor)
             train_sampler=None
         # reinit dataloader to use the new dataset
