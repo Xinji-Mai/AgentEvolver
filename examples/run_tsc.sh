@@ -11,7 +11,7 @@ CONFIG_PATH="$PROJECT_DIR/config"
 # completion_callback=none
 env_url=http://localhost:8000
 current_time=$(date "+%Y%m%d_%H%M%S")
-log_file="tsc_wexp_poshigh_neghigh_${current_time}.log"
+log_file="tsc_trainer_poshigh_neghigh_${current_time}.log"
 EN_MASK="pos-high-neg-high"
 EN_RHO=0.8
 
@@ -59,14 +59,14 @@ python3 -m beyondagent.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='beyondagent' \
-    trainer.experiment_name="qwen2.5-7b_appworld_tsc_wexp_poshigh_neghigh_8gpu" \
+    trainer.experiment_name="qwen2.5-7b_appworld_tsc_trainer_poshigh_neghigh_8gpu" \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=20 \
     trainer.total_epochs=20 \
     trainer.val_before_train=True \
-    trainer.validation_data_dir="experiments/exp_tsc_wexp_poshigh_neghigh${current_time}/validation_log" \
-    trainer.rollout_data_dir="experiments/exp_tsc_wexp_poshigh_neghigh${current_time}/rollout_log" \
+    trainer.validation_data_dir="experiments/exp_tsc_trainer_poshigh_neghigh${current_time}/validation_log" \
+    trainer.rollout_data_dir="experiments/exp_tsc_trainer_poshigh_neghigh${current_time}/rollout_log" \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=20480 \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=20480 \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=20480 \
@@ -74,8 +74,8 @@ python3 -m beyondagent.main_ppo \
     critic.forward_max_token_len_per_gpu=20480 \
     data.train_files=/mnt/data_aisys_cpfs/zouanni.zan/data/appworld_parquet/train.parquet \
     data.val_files=/mnt/data_aisys_cpfs/zouanni.zan/data/appworld_parquet/dev.parquet \
-    experience_maker.enable_summarizer=True \
-    experience_maker.enable_context_generator=True \
+    experience_maker.enable_summarizer=False \
+    experience_maker.enable_context_generator=False \
     experience_maker.workspace_id="w1_qwen25_v2_${current_time}" \
     2>&1 | tee "$log_file" \
     $@

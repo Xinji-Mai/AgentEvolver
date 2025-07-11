@@ -41,6 +41,7 @@ from verl.trainer.ppo.ray_trainer import (AdvantageEstimator, RayPPOTrainer,
                                           _timer, apply_kl_penalty,
                                           compute_advantage,
                                           compute_response_mask, Role)
+import verl.utils.torch_functional as verl_F
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
 from verl.utils.metric import reduce_metrics
 
@@ -228,7 +229,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                     raise ValueError(f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'.")
 
                 if mbs is not None and mbs_per_gpu is not None:
-                    raise ValueError(f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. Please remove '{name}.{param}' because only '*_{param_per_gpu}'"   "is supported (the former is deprecated).")
+                    raise ValueError(f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. Please remove '{name}.{param}' because only '*_{param_per_gpu}'" + "is supported (the former is deprecated).")
 
         if not config.actor_rollout_ref.actor.use_dynamic_bsz:
             # actor: ppo_micro_batch_size vs. ppo_micro_batch_size_per_gpu
@@ -300,7 +301,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                 assert config.critic.model.use_remove_padding, "When using sequence parallelism for critic, you must enable `use_remove_padding`."
 
         if config.data.get("val_batch_size", None) is not None:
-            print("WARNING: val_batch_size is deprecated."   " Validation datasets are sent to inference engines as a whole batch,"   " which will schedule the memory themselves.")
+            print("WARNING: val_batch_size is deprecated." + " Validation datasets are sent to inference engines as a whole batch," + " which will schedule the memory themselves.")
 
         # check eval config
         if config.actor_rollout_ref.rollout.val_kwargs.do_sample:
@@ -369,9 +370,9 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                             query=test_gen_batch.non_tensor_batch["raw_prompt"][i],
                             env_type=self.config.env_service.env_type
                          ) for i in range(len(test_gen_batch))]
-                print("=" * 10   "start validate rollout"   "=" * 10)
+                print("=" * 10 + "start validate rollout" + "=" * 10)
                 trajectories = self.env_manager.rollout(tasks, mode="validate", epoch=f"test.1.{i}")
-                print("=" * 10   "end validate rollout"   "=" * 10)
+                print("=" * 10 + "end validate rollout" + "=" * 10)
                 test_output_gen_batch = self.env_manager.to_dataproto(trajectories)
                 # test_output_gen_batch_padded = self.explorer_manager.rollout(test_gen_batch_padded)
                 # test_output_gen_batch_padded = self.async_rollout_manager.generate_sequences(test_gen_batch_padded)
@@ -443,64 +444,68 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         return metric_dict
 
     def _add_entropy_mask(
-        self,
-        entropy: torch.Tensor,          # (bs, seq_len)
-        rho: float | tuple[float, float],
-        response_mask: torch.Tensor,    # (bs, seq_len) 1=valid
-        adv: torch.Tensor | None = None,
-        mode: str = "pos-high-neg-high",
+        self, entropy, rho, response_mask, adv=None, mode="pos-high-neg-high"
     ):
-        """
-        Select top-ρ% high-entropy tokens (or asymmetric masks) as loss_mask.
-        Returns:
-            new_mask  : torch.Tensor, same shape as response_mask
-            tau_rho   : threshold(s) actually used
-            (entropy_pos, entropy_neg)
-        """
+        # print('response_mask',response_mask)
         new_mask = response_mask.bool()
-        flat_entropy = entropy[new_mask]                       # valid tokens only
+        flat_entropy = entropy[new_mask]  # 只统计有效 token
 
-        def _q(x: torch.Tensor, q: float) -> float:
-            # use 'higher' so阈值属于保留集合
-            return torch.quantile(x, q=q, interpolation="higher").item()
+        # print('new_mask',new_mask.shape)
+        # print('flat_entropy',flat_entropy)
+        # print('flat_entropy shape',flat_entropy.shape)
+        # exit(0)
+        # print('maskori', response_mask.bool())
+        def _quantile_threshold(flat_values: torch.Tensor, q: float) -> float:
+            return torch.quantile(flat_values, q=q, interpolation="higher").item()
 
-        if adv is None and mode == "pos-high-neg-low":
-            raise ValueError("`adv` must be provided for pos/neg split masking")
+        if adv is None:
+            raise ValueError("`adv` must be provided when mode='pos-high-neg-low'")
 
-        # --- 统计正负样本平均熵 (用来写 tensorboard / metrics) ---
-        entropy_pos_neg = (None, None)
-        if adv is not None:
-            adv_row = adv[:, 0]
-            pos_rows, neg_rows = adv_row > 0, adv_row < 0
-            pos_mask_rows = pos_rows.unsqueeze(-1).expand_as(new_mask)
-            neg_mask_rows = neg_rows.unsqueeze(-1).expand_as(new_mask)
-            import verl.utils.torch_functional as verl_F
-            entropy_pos = verl_F.masked_mean(entropy, pos_mask_rows & new_mask)
-            entropy_neg = verl_F.masked_mean(entropy, neg_mask_rows & new_mask)
-            entropy_pos_neg = (entropy_pos.detach().item(), entropy_neg.detach().item())
+        adv_row = adv[:, 0]
+        pos_rows = adv_row > 0
+        neg_rows = adv_row < 0
 
-        # --- 根据不同策略构造 mask ---
+        pos_mask_rows = pos_rows.unsqueeze(-1).expand_as(new_mask)
+        pos_mask = pos_mask_rows & new_mask
+        entropy_pos = verl_F.masked_mean(entropy, pos_mask)
+
+        neg_mask_rows = neg_rows.unsqueeze(-1).expand_as(new_mask)
+        neg_mask = neg_mask_rows & new_mask
+        entropy_neg = verl_F.masked_mean(entropy, neg_mask)
+
+        entropy_pos_neg = (entropy_pos.detach().item(), entropy_neg.detach().item())
+        print("entropy_pos_neg", entropy_pos_neg)
+        # exit(0)
+
         if mode == "pos-high-neg-high":
-            tau = _q(flat_entropy, rho)
-            new_mask &= entropy >= tau          # 保留高熵
+            flat_entropy = entropy[new_mask]  # 只统计有效 token
+            tau = _quantile_threshold(flat_entropy, q=rho)
+            new_mask &= entropy >= tau  # 保留高熵
             tau_rho = (tau, tau)
 
         elif mode == "pos-high-neg-low":
-            rho_pos, rho_neg = rho if isinstance(rho, (list, tuple)) else (rho, rho)
-            tau_pos = _q(flat_entropy, rho_pos)
-            tau_neg = _q(flat_entropy, 1.0 - rho_neg)
-            # 正样本保留 ≥tau_pos；负样本保留 ≤tau_neg
-            new_mask &= (~pos_mask_rows) | (entropy >= tau_pos)
-            new_mask &= (~neg_mask_rows) | (entropy <= tau_neg)
-            tau_rho = (tau_pos, tau_neg)
 
-        elif mode is None:
+            if isinstance(rho, (list, tuple)):
+                rho_pos, rho_neg = float(rho[0]), float(rho[1])
+            else:
+                rho_pos = rho_neg = float(rho)  # 若只给一个值，默认两边都用同一个
+
+            tau_pos = _quantile_threshold(flat_entropy, q=rho_pos)
+            new_mask &= (~pos_mask_rows) | (entropy >= tau_pos)
+            tau_neg = _quantile_threshold(
+                flat_entropy, q=1.0 - rho_neg
+            )  # 负样本要屏蔽高熵 ⇒ 取 (1-ρ_neg) 分位阈值
+            new_mask &= (~neg_mask_rows) | (entropy <= tau_neg)
+
+            tau_rho = (tau_pos, tau_neg)
+            print("tau_rho", tau_rho)
+
+        elif mode == None:
+            new_mask = response_mask
             tau_rho = None
         else:
-            raise ValueError(f"Unknown entropy-mask mode: {mode}")
-
+            raise
         return new_mask.to(response_mask.dtype), tau_rho, entropy_pos_neg
-
     def fit(self):
         """
         The training loop of PPO.
@@ -542,7 +547,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
 
         # we start from step 1
-        self.global_steps   = 1
+        self.global_steps += 1
         last_val_metrics = None
 
         for epoch in range(self.config.trainer.total_epochs):
@@ -585,9 +590,9 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                                     ) for i in range(len(gen_batch))]
 
                             # TODO enable tracing by jinli 0619
-                            print("=" * 10   "start fit rollout"   "=" * 10)
+                            print("=" * 10 + "start fit rollout" + "=" * 10)
                             trajectories = self.env_manager.rollout(tasks, mode="sample", epoch=f"train.{epoch}.{i}")
-                            print("=" * 10   "end fit rollout"   "=" * 10)
+                            print("=" * 10 + "end fit rollout" + "=" * 10)
 
                             gen_batch_output = self.env_manager.to_dataproto(trajectories)
                             context_time_cost = [x.metadata["context_time_cost"] for x in trajectories if "context_time_cost" in x.metadata]
@@ -661,30 +666,11 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
-                        # loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-                        # entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-                        # old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
-                        # metrics.update(old_log_prob_metrics)
-                        entropy_mask, tau_rho, (H_pos, H_neg) = self._add_entropy_mask(
-                            entropy=entropys,
-                            rho=self.config.algorithm.get("rho", 0.2),          # 默认 top-20%
-                            response_mask=response_masks,
-                            adv=batch.batch.get("advantages", None),            # 若已计算
-                            mode=self.config.algorithm.get("entropy_mask_mode",
-                                                            "pos-high-neg-high"),
-                        )
-                        entropy_loss = agg_loss(loss_mat=entropys,
-                                                loss_mask=entropy_mask,
-                                                loss_agg_mode=loss_agg_mode)
-                        
-                        metrics.update({
-                            "entropy_mask_ratio": entropy_mask.float().mean().item(),
-                            "tau_pos": tau_rho[0] if tau_rho else -1,
-                            "tau_neg": tau_rho[1] if tau_rho else -1,
-                            "entropy_pos": H_pos if H_pos is not None else -1,
-                            "entropy_neg": H_neg if H_neg is not None else -1,
-                        })
-                        old_log_prob.batch.pop("entropys")
+                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                        entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
+                        old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
+                        metrics.update(old_log_prob_metrics)
+                        # old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
 
                         if "rollout_log_probs" in batch.batch.keys():
@@ -758,6 +744,24 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                             config=self.config.algorithm,
                         )
                         # breakpoint()
+                        rho  = self.config.entropy_mask.rho        # 例如 0.2
+                        mode = self.config.entropy_mask.mode       # "pos-high-neg-high" / "pos-high-neg-low" / None
+
+                        entropy_mask, tau, (ent_pos, ent_neg) = self._add_entropy_mask(
+                            entropy       = batch.batch["entropys"],          # (bs, resp_len)
+                            rho           = rho,
+                            response_mask = batch.batch["response_mask"],     # 初始 mask（padding / multi_turn）
+                            adv           = batch.batch["advantages"],        # (bs, 1) or (bs, resp_len)
+                            mode          = mode,
+                        )
+
+                        batch.batch["response_mask"] = entropy_mask           # 覆盖为“高熵”版本
+                        metrics.update({                                       # 记录诊断指标（可选）
+                            "actor/tau_pos": tau[0] if tau else 0.0,
+                            "actor/tau_neg": tau[1] if tau else 0.0,
+                            "actor/entropy_pos": ent_pos,
+                            "actor/entropy_neg": ent_neg,
+                        })
 
                     # update critic
                     if self.use_critic:
@@ -833,7 +837,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                 logger.log(data=metrics, step=self.global_steps)
 
                 progress_bar.update(1)
-                self.global_steps   = 1
+                self.global_steps += 1
                 if is_last_step:
                     pprint(f"Final validation metrics: {last_val_metrics}")
                     progress_bar.close()
