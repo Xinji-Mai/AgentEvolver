@@ -687,16 +687,19 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         )
 
                         # # ===========  0714 shuchang: add semantic mask  =========== 
+                        print("^^^^^^^^^^^^^^^^^ start evaluate_step_flags")
                         step_flags = evaluate_step_flags(
                             tokenizer  = self.tokenizer,
                             batch      = batch,
-                        )                                   # list[list[bool]]
+                        )     # list[list[bool]]
+                        print("^^^^^^^^^^^^^^^^^ end evaluate_step_flags", step_flags.sahpe)
                         apply_step_mask(
                             batch        = batch,
                             step_flags   = step_flags,
                             good_scale   = 1.0,
                             bad_scale    = 0.2,
                         )                  # breakpoint()
+                        print("$$$$$$$$$$$$$$$$$$$$ ")
                         # # ===========  0714 shuchang: add semantic mask  =========== 
                         # # ---------------- token-entropy logging ----------------
                         # responses       = batch.batch["responses"]         # (bs, resp_len)
