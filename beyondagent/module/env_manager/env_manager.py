@@ -160,8 +160,8 @@ class ParallelEnvManager(object):
             input_ids = outputs["input_ids"][0].tolist()  # 移除batch维度
             attention_mask = outputs["attention_mask"][0].tolist()
             
-            # 只有第一条时prompt，后面都是response
-            prompt_text = self.tokenizer.apply_chat_template(messages[:1], tokenize=False, add_generation_prompt=True)
+            assert len(messages)>=2, "#message must >=2, as environment's initial message has system prompt + query prompt."
+            prompt_text = self.tokenizer.apply_chat_template(messages[:2], tokenize=False, add_generation_prompt=True)
             prompt_outputs = self.tokenizer(prompt_text, return_tensors="pt", padding=False)
             prompt_ids = prompt_outputs["input_ids"][0].tolist()
             prompt_attention_mask = prompt_outputs["attention_mask"][0].tolist()
