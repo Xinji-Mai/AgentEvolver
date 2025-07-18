@@ -55,7 +55,7 @@ python3 -m beyondagent.main_ppo \
     trainer.critic_warmup=0 \
     trainer.logger=['console','swanlab'] \
     trainer.project_name='ba-taskmanager' \
-    trainer.experiment_name="qwen3_8b-" \
+    trainer.experiment_name="qwen3_8b-1o1s" \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=10 \
@@ -73,5 +73,7 @@ python3 -m beyondagent.main_ppo \
     experience_maker.enable_summarizer=False \
     experience_maker.enable_context_generator=False \
     experience_maker.workspace_id="w1_qwen25_v2_${current_time}" \
+    task_manager.mixture.use_original_tasks=True \
+    task_manager.mixture.synthetic_data_ratio=1.0 \
     2>&1 | tee "$log_file" \
     $@

@@ -192,7 +192,8 @@ class TaskRunner:
             mixture_strategy=UnifiedMixtureStrategy(
                 use_original=config.task_manager.mixture.use_original_tasks,
                 synthetic_ratio=config.task_manager.mixture.synthetic_data_ratio,
-                shuffle=config.task_manager.mixture.shuffle
+                shuffle=config.task_manager.mixture.shuffle,
+                seed=42,
                 ),
             tokenizer=tokenizer,
             env_service_url=config.env_service.env_url,
