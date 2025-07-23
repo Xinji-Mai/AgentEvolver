@@ -60,8 +60,25 @@ class Explorer(object):
             assert isinstance(state_message,list) and len(state_message)==2, "state_message must be list and its length must be 2"
             step:list[dict] = []
             if system_prompt is not None:
-                step.append({"role": "system", "content": system_prompt})
+                step.append({"role": "user", "content": system_prompt})
             step.extend(state_message)
+            
+            # Example of state_message after rearrangement
+            # [
+            #     {
+            #         "role": "system",
+            #         "content": "<system prompt that describes the environments and others>"
+            #     },
+            #     {
+            #         "role": "system",
+            #         "content": "<system prompt inserted by task manager to control the exploration process>"
+            #     }
+            #     {
+            #         "role": "user", 
+            #         "content": "<the query>"
+            #     },
+            # ]
+            
             trajectory: Trajectory = Trajectory(
                 data_id=data_id, rollout_id=rollout_id, steps=step, query=state_message[-1]['content']
             )
