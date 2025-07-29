@@ -933,6 +933,11 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                             with open(filename, "w") as f:
                                 for traj in trajectories:
                                     f.write(traj.json() + "\n")
+                            # save tasks
+                            filename = os.path.join(rollout_data_dir, f"task_{self.global_steps}.jsonl")
+                            with open(filename,"w") as f:
+                                for task in tasks: # this must be bounded # type: ignore
+                                    f.write(task.json() + "\n")
                             
 
                     # validate
