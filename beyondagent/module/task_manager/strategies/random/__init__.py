@@ -64,6 +64,7 @@ class LlmRandomSamplingExploreStrategy(TaskExploreStrategy):
             config=self._config,
         )
         agent_flow.max_steps = self._max_explore_step  # this is ugly
+        agent_flow.max_model_len=102400 # TODO max len
 
         old_objectives = self.old_retrival.retrieve_objectives(task)
 

@@ -707,6 +707,9 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                     non_tensor_batch_keys_to_pop.append("tools_kwargs")
                 if "extras" in batch.non_tensor_batch:
                     non_tensor_batch_keys_to_pop.append("extras")
+                    batch_extras = deepcopy(batch.non_tensor_batch["extras"])
+                else:
+                    batch_extras = None
                 gen_batch = batch.pop(
                     batch_keys=batch_keys_to_pop,
                     non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
@@ -962,6 +965,9 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                     }
                 )
                 # collect metrics
+                
+                # add `extras` back to batch, for sperate the original and synthetic data in metric calculation
+                batch = batch.union(DataProto(non_tensor_batch={'extras': batch_extras}))
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
