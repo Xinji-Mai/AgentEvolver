@@ -1,4 +1,5 @@
 import json
+import random
 import time
 from typing import Optional, cast
 
@@ -35,6 +36,8 @@ class ControlledAgentFlow(BaseAgentFlow):
     def execute(self, trajectory: Trajectory, env: EnvClient, instance_id: str, **kwargs) -> Trajectory:
         request_id: str = ""
         trajectory=trajectory.copy(deep=True) # clone the trajectory to avoid side effect
+        
+        rng=random.Random(trajectory.steps[0]['content']) # use system prompt as seed
         for act_step in range(self.max_steps):
             # remove old system prompt
             new_steps=[]
@@ -45,7 +48,7 @@ class ControlledAgentFlow(BaseAgentFlow):
                 new_steps.append(i)
             trajectory.steps=new_steps
             # add exploration instruction
-            records=self._state_recorder.get_state(trajectory)
+            records=self._state_recorder.get_state(trajectory) # FIXME 可能基于 llm 的状态总结会更好一点
             if len(records)>0:
                 instruction="In the past interactions at this place, you have output these action and observed these states already:\n"
                 
@@ -57,14 +60,17 @@ class ControlledAgentFlow(BaseAgentFlow):
                 instruction+=self._compress_state_action(records_str)
                 instruction+="\n\n"
 
-                instruction+="## Continue your work."
-                instruction+="Please continue your work. You are not expected to repeat the action you have already observed." # TODO: better strategy
+                instruction+="## Continue your work"
+                # FIXME 这个 prompt 有点僵硬。探索-利用平衡
+                instruction+="Please continue your work. You can choose new action or repeat your old action." # TODO: better strategy
                 logger.debug(f"retrieve #records={len(records)}, #instruction={len(instruction)}")
                 
                 from pprint import pprint
                 pprint(instruction)
                 
-                trajectory.steps.append({"role":"user","content":instruction})
+                # TODO 随机性加入 instructions
+                if rng.random()<=1.0:
+                    trajectory.steps.append({"role":"user","content":instruction})
             
             assert len(trajectory.steps)>2
             assert trajectory.steps[0]['role'] == 'system'
@@ -80,7 +86,7 @@ class ControlledAgentFlow(BaseAgentFlow):
 
             # yunpeng 0623: to prevent add an imend token to an uncompleted seq, 
             # because the message-type output will be applied chat_template.
-            max_response_length = self.config.actor_rollout_ref.rollout.response_length
+            max_response_length = 102400 # TODO qwen-plus max_length
             if current_token_len + max_response_length > self.max_model_len:
                 logger.warning(f"exceed max model, current_token_len={current_token_len}, max_response_length={max_response_length}, max_model_len={self.max_model_len}")
                 break
