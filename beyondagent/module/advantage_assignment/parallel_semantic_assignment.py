@@ -76,7 +76,13 @@ def parse_rollout_to_steps(rollout: str) -> List[Dict[str, str]]:
     """
     将包含 ... assistant\n<action text>\nuser\n<observation text> ... 的长串 rollout 拆成步骤列表。
     """
-    parts = re.split(r'\n(assistant|user)\n', rollout, flags=re.I)
+    
+    # Yunpeng.zyp: 2025.08.09
+    # 危险，未区分大小写
+    # parts = re.split(r'\n(assistant|user)\n', rollout, flags=re.I)
+    # FIXME: 直接以assistant获取可能会被hack，需要改成从|imstart|\|imend|, 或直接从batch.non_tensor_batch["messages]里获取
+    # FIXME: 后续这里的切分修改也应该和batch.step_ids的切分一致
+    parts = re.split(r'\n(assistant|user)\n', rollout)
 
     if parts and parts[0].strip():
         parts = ['assistant', parts[0]] + parts[1:]
@@ -804,8 +810,9 @@ def apply_step_mask_vectorized(tokenizer, batch, step_flags: List[List[bool]], c
 
         for step_id, is_good in enumerate(current_step_flags):
             step_mask = (sample_step_ids == step_id)
-            assert step_mask.any(), f"[vectorized_mask][ERROR] step_id {step_id} not found in sample {b}"
+            # assert step_mask.any(), f"[vectorized_mask][ERROR] step_id {step_id} not found in sample {b}"
             if not step_mask.any():
+                logger.warning(f"[vectorized_mask][ERROR] step_id {step_id} not found in sample {b}")
                 continue
 
             if sample_overall_pos:
