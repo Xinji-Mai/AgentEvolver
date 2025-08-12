@@ -97,11 +97,13 @@ grader_manager = RewardCalculatorManager()
 
 from .judge_with_gt import LlmAsJudgeRewardCalculatorWithGT
 from .reward import LlmAsJudgeRewardCalculator
+from .binary_judge import LlmAsJudgeBinaryRewardCalculator
 from .env_grader import EnvGrader
 
 __all__=[
     "LlmAsJudgeRewardCalculatorWithGT",
     "LlmAsJudgeRewardCalculator",
+    "LlmAsJudgeBinaryRewardCalculator",
     "EnvGrader",
     "grader_manager"
 ]

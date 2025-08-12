@@ -21,7 +21,7 @@ from beyondagent.module.trainer.ba_async_llm_server_manager import BaAsyncLLMSer
 from beyondagent.module.task_manager.rewards import grader_manager
 from beyondagent.schema.task import Task
 from beyondagent.schema.trajectory import Trajectory, Sample
-from beyondagent.module.task_manager.rewards import LlmAsJudgeRewardCalculator,LlmAsJudgeRewardCalculatorWithGT,grader_manager
+from beyondagent.module.task_manager.rewards import LlmAsJudgeRewardCalculator,LlmAsJudgeRewardCalculatorWithGT, LlmAsJudgeBinaryRewardCalculator,grader_manager
 
 
 class ParallelEnvManager(object):
