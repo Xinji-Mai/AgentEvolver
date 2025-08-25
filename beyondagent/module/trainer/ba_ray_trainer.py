@@ -705,18 +705,70 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
+                        
+                        # shuchang: 0825
+                        # NOTE: PRM-GRPO 先得到 PRM 的 step-reward，再按 DeepSeek-Math 的 GRPO 公式算 token 的 advantage
+                        # ==================== Begin PRM GRPO  ====================
+                        sem_cfg = self._get_semantic_config()
+                        enable_prm_grpo = getattr(sem_cfg, "enable_prm_grpo", False)
 
-                        batch = compute_advantage(
-                            batch,
-                            adv_estimator=self.config.algorithm.adv_estimator,
-                            gamma=self.config.algorithm.gamma,
-                            lam=self.config.algorithm.lam,
-                            num_repeat=self.config.actor_rollout_ref.rollout.n,
-                            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-                            multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
-                            config=self.config.algorithm,
-                        )
+                        if not enable_prm_grpo:
+                            # 走原 compute_advantage 流程（保持兼容）
+                            norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
+                            batch = compute_advantage(
+                                batch,
+                                adv_estimator=self.config.algorithm.adv_estimator,
+                                gamma=self.config.algorithm.gamma,
+                                lam=self.config.algorithm.lam,
+                                num_repeat=self.config.actor_rollout_ref.rollout.n,
+                                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                                multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
+                                config=self.config.algorithm,
+                            )
+                        else:
+                            # === (A) 解析/校验 step 边界 ===
+                            if not verify_step_alignment(batch, self.tokenizer, self.global_steps):
+                                raise RuntimeError("Step alignment check failed!")
+                            for sample_idx in range(min(3, len(batch.batch["prompts"]))):
+                                verify_step_content(batch, self.tokenizer, sample_idx)
 
+                            # === (B) 一次 API / 每样本评估全部 steps ===
+                            from beyondagent.module.advantage_assignment.parallel_semantic_assignment import evaluate_step_flags_parallel
+                            flags, stats = evaluate_step_flags_parallel(
+                                tokenizer=self.tokenizer,
+                                batch=batch,
+                                mask_tensor=batch.batch["response_mask"],
+                                save_dir=getattr(self.config.trainer, 'llm_evaluation_log_dir', None),
+                                global_step=self.global_steps,
+                                epoch=f"train.{epoch}.{i}",
+                            )
+                            
+
+                            # 注意：上面一行为了最小改动直接复用了 process_batch_sync；
+                            # 如果你希望避免任何优势上的改写，可直接：
+                            # flags, _ = evaluate_step_flags_parallel(...)
+
+                            # === (C) PRM → GRPO 后缀和 ===
+                            from beyondagent.module.advantage_assignment.prm_grpo import (
+                                compute_prm_grpo_advantages, PRMHyper
+                            )
+                            hyper = PRMHyper(
+                                alpha_pos=getattr(sem_cfg, "alpha_pos", 1.0),
+                                beta_pos =getattr(sem_cfg, "beta_pos", 0.2),
+                                alpha_neg=getattr(sem_cfg, "alpha_neg", 1.0),
+                                beta_neg =getattr(sem_cfg, "beta_neg", 0.2),
+                            )
+
+                            out = compute_prm_grpo_advantages(
+                                batch        = batch,
+                                step_flags   = flags if isinstance(flags, list) else flags["llm_parsed_flags"],  # 你可按返回结构调整
+                                group_size   = self.config.actor_rollout_ref.rollout.n,
+                                hyper        = hyper,
+                            )
+
+                            # 写回 advantages，供后续 actor/critic 更新
+                            batch.batch["advantages"] = out["advantages"]
+                        # ============= End PRM GRPO =============
                         # # ===========  0714 shuchang: add semantic mask  =========== 
                         # print("^^^^^^^^^^^^^^^^^ start evaluate_step_flags")
                         # step_flags = evaluate_step_flags(
