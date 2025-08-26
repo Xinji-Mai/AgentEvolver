@@ -222,8 +222,11 @@ def get_exploration_strategy(name:str, strategy_args, *, tokenizer, config)->Tas
         raise NotImplementedError(f"exploration strategy {name} not implemented")
 
 
+
+
+
 class FullDataset(Dataset):
-    """FullDataset with MixtureStrategy support"""
+    """FullDataset with MixtureStrategy support and auto-refresh after one DataLoader epoch"""
     
     def __init__(self, 
                  manager: TaskManager, 
@@ -234,15 +237,6 @@ class FullDataset(Dataset):
                  tokenizer, 
                  config, 
                  processor):
-        """
-        Args:
-            manager: TaskManager实例
-            tasks: 原始任务列表
-            mixture_strategy: 数据混合策略，如果为None则使用默认的NoMixtureStrategy
-            tokenizer: tokenizer
-            config: 配置
-            processor: processor
-        """
         self._manager = manager
         self._tasks = list(tasks)
         assert all([x.task.evaluator==reward_config["original_grader"] for x in tasks]), "task evaluator must be set as the config"
@@ -253,20 +247,34 @@ class FullDataset(Dataset):
         self._processor = processor
         self._objectives = []
         self._dataset = None
-    
+        self._synthetic_objectives = []
+        
+        # 标记是否需要在下一轮迭代开始前刷新
+        self._refresh_after_epoch = False
+
+    def _rebuild_dataset(self):
+        """使用混合策略重新生成 dataset"""
+        self._objectives = self._mixture_strategy.mix_data(self._synthetic_objectives, self._tasks)
+        self._dataset = to_rl_dataset(self._objectives, self._tokenizer, self._config, self._processor)
+        logger.info(f"Auto-refreshed dataset: #objectives={len(self._objectives)}, #rlhf={len(self._dataset)}")
+
+    def update(self):
+        """手动触发一次数据集重建"""
+        if not self._synthetic_objectives:
+            logger.warning("No synthetic objectives available, did you call load_from_file() or reload() first?")
+        self._rebuild_dataset()
+        logger.info("Dataset updated manually via update().")
+
     def set_mixture_strategy(self, strategy: MixtureStrategy):
-        """设置新的混合策略"""
         self._mixture_strategy = strategy
         logger.info(f"mixture strategy updated to: {type(strategy).__name__}")
     
     def save_to_file(self, filepath: str):
-        """保存objectives到文件"""
         with open(filepath, "w") as f:
             f.writelines([ob.json() + "\n" for ob in self._synthetic_objectives])
         logger.info(f"Saved {len(self._objectives)} objectives to {filepath}")
     
     def load_from_file(self, filepath: str):
-        """从文件加载objectives"""
         if os.path.exists(filepath):
             with open(filepath, "r") as f:
                 self._synthetic_objectives = []
@@ -275,14 +283,11 @@ class FullDataset(Dataset):
                     # patch old data
                     if tmp.ground_truth is None:
                         tmp.ground_truth = json.loads(line)['ground_truth']
-                    
                     self._synthetic_objectives.append(tmp)
-                
         else:
             logger.warning(f"failed to load objectives from {filepath}, file not found.")
             self._synthetic_objectives = []
         
-        # check gt exists
         for item in self._synthetic_objectives:
             assert item.ground_truth is not None
         
@@ -290,31 +295,16 @@ class FullDataset(Dataset):
         for item in self._synthetic_objectives:
             item.task.evaluator=self._reward_config["synthetic_grader"]
         
-        # 使用混合策略处理数据
-        self._objectives = self._mixture_strategy.mix_data(self._synthetic_objectives, self._tasks)
-        
-        # 转换为RL dataset
-        self._dataset = to_rl_dataset(self._objectives, self._tokenizer, self._config, self._processor)
-        logger.info(f"Loaded and mixed dataset: #objectives={len(self._objectives)}, #rlhf={len(self._dataset)}")
+        self._rebuild_dataset()
     
     def reload(self):
-        """重新生成数据"""
-        # 生成合成数据
         self._synthetic_objectives = self._manager.generate_task([x.task for x in self._tasks], show_progress=True)
-        
         logger.info("patching grader config to all synthetic data")
         for item in self._synthetic_objectives:
             item.task.evaluator=self._reward_config["synthetic_grader"]
-        
-        # 使用混合策略处理数据
-        self._objectives = self._mixture_strategy.mix_data(self._synthetic_objectives, self._tasks)
-        
-        # 转换为RL dataset
-        self._dataset = to_rl_dataset(self._objectives, self._tokenizer, self._config, self._processor)
-        logger.info(f"Reloaded and mixed dataset: #objectives={len(self._objectives)}, #rlhf={len(self._dataset)}")
+        self._rebuild_dataset()
     
     def get_statistics(self) -> dict:
-        """获取数据集统计信息"""
         if not self._objectives:
             return {
                 "total": 0, 

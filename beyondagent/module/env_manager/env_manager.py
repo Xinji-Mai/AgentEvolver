@@ -179,7 +179,8 @@ class ParallelEnvManager(object):
         # 6. 最终排序和返回
         # 所有任务都已成功完成
         trajectory_list = sorted(trajectory_list, key=lambda x: (int(x.data_id), int(x.rollout_id)))
-        logger.info(f"Epoch {epoch}: Collected {len(trajectory_list)} trajectories")
+        avg_step=np.mean([len(trajectory.steps) for trajectory in trajectory_list])
+        logger.info(f"Epoch {epoch}: Collected {len(trajectory_list)} trajectories, avg step={avg_step}")
         return trajectory_list
 
     # TODO: define an extra class for trajectory-dataproto converting.
@@ -216,6 +217,7 @@ class ParallelEnvManager(object):
             attention_mask = outputs["attention_mask"][0].tolist()
             
             assert len(messages)>=2 and messages[0]["role"] == "system" and messages[1]["role"] == "user", "#message must >=2 and consists of system prompt + query prompt"
+            # 新 env 的前两条消息是 prompt。validation metric 会根据 prompt 进行聚类作为 @n 的 n 的依据。
             prompt_text = self.tokenizer.apply_chat_template(messages[:2], tokenize=False, add_generation_prompt=True)
             prompt_outputs = self.tokenizer(prompt_text, return_tensors="pt", padding=False)
             prompt_ids = prompt_outputs["input_ids"][0].tolist()

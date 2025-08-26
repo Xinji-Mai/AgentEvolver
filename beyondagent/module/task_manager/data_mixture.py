@@ -48,7 +48,7 @@ class UnifiedMixtureStrategy(MixtureStrategy):
         UnifiedMixtureStrategy(use_original=True, synthetic_ratio=1.5)
     """
     
-    def __init__(self, use_original: bool = True, original_data_ratio: float = 1.0, synthetic_ratio: float = 0.0, shuffle: bool = True, seed: Optional[int] = None):
+    def __init__(self, use_original: bool = True, synthetic_ratio: float = 0.0, shuffle: bool = True, seed: Optional[int] = None):
         """
         Args:
             use_original: 是否使用原始数据
@@ -62,7 +62,6 @@ class UnifiedMixtureStrategy(MixtureStrategy):
             seed: 随机种子，用于控制抽样和shuffle的随机性
         """
         self._use_original = use_original
-        self._original_data_ratio=original_data_ratio
         self._synthetic_ratio = synthetic_ratio
         self._shuffle = shuffle
         self._seed = seed
@@ -80,10 +79,8 @@ class UnifiedMixtureStrategy(MixtureStrategy):
         mixed_objectives = []
         
         if self._use_original:
-            for i in range(int(self._original_data_ratio)):
-                mixed_objectives.extend(copy.deepcopy(original_tasks))
-            logger.info(f"added {len(mixed_objectives)} original tasks ({len(original_tasks)} x {self._original_data_ratio} times)")
-        cnt_original = len(mixed_objectives)
+            mixed_objectives.extend(copy.deepcopy(original_tasks))
+            logger.info(f"added {len(mixed_objectives)} original tasks")
         
         if self._synthetic_ratio > 0:
             target_synthetic_count = int(len(original_tasks) * self._synthetic_ratio)
@@ -102,8 +99,8 @@ class UnifiedMixtureStrategy(MixtureStrategy):
             logger.debug("shuffling data")
             rng.shuffle(mixed_objectives)
 
-        synthetic_count = len(mixed_objectives) - cnt_original
-        logger.info(f"final mixture: {cnt_original} original + {synthetic_count} synthetic = {len(mixed_objectives)} total")
+        synthetic_count = len(mixed_objectives) - len(original_tasks)
+        logger.info(f"final mixture: {len(original_tasks)} original + {synthetic_count} synthetic = {len(mixed_objectives)} total")
         
         return mixed_objectives
     

@@ -989,5 +989,6 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             # we expect the train dataset is fully explored at the beginning, no reload needed.
             # if isinstance(self.train_dataset, FullDataset):
             #     self.train_dataset.reload()
+            self.train_dataset.update()
 
 

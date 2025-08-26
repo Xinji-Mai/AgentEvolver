@@ -194,7 +194,6 @@ class TaskRunner:
             old_retrival=NaiveTaskObjectiveRetrieval(),
             mixture_strategy=UnifiedMixtureStrategy(
                 use_original=config.task_manager.mixture.use_original_tasks,
-                original_data_ratio=config.task_manager.mixture.original_data_ratio,
                 synthetic_ratio=config.task_manager.mixture.synthetic_data_ratio,
                 shuffle=config.task_manager.mixture.shuffle,
                 seed=42,
