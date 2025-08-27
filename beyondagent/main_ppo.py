@@ -14,15 +14,15 @@
 """
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other main.
 """
-from best_logger import register_logger
+# from best_logger import register_logger
 from beyondagent.client.llm_client import DashScopeClient
 from beyondagent.module.task_manager.base import NaiveTaskObjectiveRetrieval
 from beyondagent.module.task_manager.data_mixture import OriginalOnlyStrategy, UnifiedMixtureStrategy
 from beyondagent.module.task_manager.strategies.random import LlmRandomSamplingExploreStrategy
 from beyondagent.module.task_manager.task_manager import TaskManager
 
-non_console_mods = ["appworld_io"]
-register_logger(non_console_mods=non_console_mods, auto_clean_mods=[], base_log_path="logs/beyondagent", debug=True)
+# non_console_mods = ["appworld_io"]
+# register_logger(non_console_mods=non_console_mods, auto_clean_mods=[], base_log_path="logs/beyondagent", debug=True)
 
 import os
 import hydra
@@ -124,8 +124,12 @@ class TaskRunner:
             from verl.workers.fsdp_workers import (ActorRolloutRefWorker,
                                                    AsyncActorRolloutRefWorker,
                                                    CriticWorker)
-
-            actor_rollout_cls = AsyncActorRolloutRefWorker if config.actor_rollout_ref.rollout.mode == "async" else ActorRolloutRefWorker
+            ####################
+            # ANNI
+            from beyondagent.module.exp_manager.het_fsdp_worker import HETAsyncActorRolloutRefWorker, HETActorRolloutRefWorker
+            actor_rollout_cls = HETAsyncActorRolloutRefWorker if config.actor_rollout_ref.rollout.mode == "async" else HETActorRolloutRefWorker
+            # actor_rollout_cls = AsyncActorRolloutRefWorker if config.actor_rollout_ref.rollout.mode == "async" else ActorRolloutRefWorker
+            ####################
             ray_worker_group_cls = RayWorkerGroup
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":

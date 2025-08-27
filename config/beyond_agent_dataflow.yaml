@@ -19,6 +19,7 @@ actor_rollout_ref:
     loss_agg_mode: token-mean
     clip_ratio_high: 0.28
     ppo_mini_batch_size: 4
+    off_cliprange_high: 1.0   # off-policy样本的cliph
   rollout:
     name: vllm
     mode: async
@@ -36,9 +37,11 @@ actor_rollout_ref:
     max_model_len: 20480
     max_env_len: 4096
     enable_request_id: False
+    sparse: True
   model:
     path: /mnt/data/zouanni.zan/models/Qwen2.5-14B-Instruct
   
+
 thread_pool:
   max_workers: 5
 
@@ -92,7 +95,22 @@ task_manager:
 
 experience_maker:
   base_url: "http://127.0.0.1:8001"
-  workspace_id: "w1_agentflow"
+  workspace_id: "default"
   enable_summarizer: False
   enable_context_generator: False
   retrieve_top_k: 3
+  updated_freq: 0   # 更新经验池的频率(这里表示k个steps)
+  val_summarizer_save: False
+  
+
+hybrid_experience_training:
+  enable: False
+  val_rollout_expmode: "mixed"    # dev集上rollout是否加经验: ["mixed", "all", "woexp"]
+  train_rollout_expmode: "mixed"  # train集上rollout是否加经验: ["mixed", "all", "woexp"]
+  rollout_expratio: 0.5           # rollout时在group内部加经验的比例, train&val 保持一致
+  train_sample_expmode: "keep"    # train集上rollout之后转换成训练样本保留/剔除/混合经验: ["keep", "discard", "hybrid"]
+  train_sample_keepratio: 0.5     # task-level多少比例选择保留经验
+  experience_template: "\n\nSome Related Experience to help you to complete the task:<EXP>{}</EXP>"  # 插入经验的模版
+
+trainer:
+  val_only: False

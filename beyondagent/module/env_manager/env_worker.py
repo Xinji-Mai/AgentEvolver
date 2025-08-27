@@ -19,9 +19,8 @@ class EnvWorker(object):
         self.task_id: str = task.task_id
         self.instance_id: str = instance_id if instance_id is not None else uuid.uuid4().hex
         self.thread_index: int = thread_index
-    
-    
-    def execute(self, data_id: str, rollout_id: str, agent_flow: BaseAgentFlow, system_prompt: Optional[str] = None, **kwargs) -> Trajectory:
+
+    def execute(self, data_id: str, rollout_id: str, add_exp: bool, task_train_exp_mode: str,agent_flow: BaseAgentFlow, system_prompt: Optional[str] = None, **kwargs) -> Trajectory:    # add add_exp & task_train_exp_mode by ANNI
         trajectory: Trajectory = Trajectory(data_id=data_id, rollout_id=rollout_id, steps=[], query="")
         try:
             init_response = self.env.create_instance(env_type=self.env_type,
@@ -47,7 +46,7 @@ class EnvWorker(object):
                                                 rollout_id=rollout_id,
                                                 steps=state_message,
                                                 query=state_message[-1]["content"])
-            trajectory: Trajectory = agent_flow.execute(trajectory=trajectory, env=self.env, instance_id=self.instance_id,
+            trajectory: Trajectory = agent_flow.execute(trajectory=trajectory, env=self.env, instance_id=self.instance_id, add_exp=add_exp, task_train_exp_mode=task_train_exp_mode, # add add_exp & task_train_exp_mode by ANNI
                                                         **kwargs)
         except Exception as e:
             logger.exception(f"encounter exception in env_worker.agent_flow~ error={e.args}")
