@@ -710,20 +710,20 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         sem_cfg = self._get_semantic_config()
                         enable_prm_grpo = getattr(getattr(sem_cfg, 'prm_grpo', None), 'enable_prm_grpo', getattr(sem_cfg, 'enable_prm_grpo', False))
 
-                        if not enable_prm_grpo:
+                        
                             # 走原 compute_advantage 流程（保持兼容）
-                            norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
-                            batch = compute_advantage(
-                                batch,
-                                adv_estimator=self.config.algorithm.adv_estimator,
-                                gamma=self.config.algorithm.gamma,
-                                lam=self.config.algorithm.lam,
-                                num_repeat=self.config.actor_rollout_ref.rollout.n,
-                                norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-                                multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
-                                config=self.config.algorithm,
-                            )
-                        else:
+                        norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
+                        batch = compute_advantage(
+                            batch,
+                            adv_estimator=self.config.algorithm.adv_estimator,
+                            gamma=self.config.algorithm.gamma,
+                            lam=self.config.algorithm.lam,
+                            num_repeat=self.config.actor_rollout_ref.rollout.n,
+                            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                            multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
+                            config=self.config.algorithm,
+                        )
+                        if enable_prm_grpo:
                             # === (A) 解析/校验 step 边界 ===
                             if not verify_step_alignment(batch, self.tokenizer, self.global_steps):
                                 raise RuntimeError("Step alignment check failed!")
