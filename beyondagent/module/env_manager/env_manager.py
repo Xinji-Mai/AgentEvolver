@@ -30,10 +30,13 @@ def init_logger(experiment_name):
     """Initialize the logger with the given configuration."""
     if 'BEST_LOGGER_INIT' in os.environ: return # prevent re-initialization in ray environment
     os.environ['BEST_LOGGER_INIT'] = '1'
+    os.environ['BEST_LOGGER_WEB_SERVICE_URL'] = "http://127.0.0.1:8181/"
     from datetime import datetime
     final_log_path = os.path.join( "./logs", datetime.now().strftime("%Y_%m_%d_%H_%M") + '_' + experiment_name )
-    non_console_mods = ["appworld_io", "rollout", "token_clip", "bad_case", "env_clip"]
+    non_console_mods = ["conversation", "rollout", "token_clip", "bad_case", "env_clip"]
     register_logger(mods=["evaluation", "exception"], non_console_mods=non_console_mods, auto_clean_mods=[], base_log_path=final_log_path, debug=False)
+    print('Run `beast_logger_install` and click the url to inspect rollout logs. Continue in 5 seconds')
+    time.sleep(5)
 
 
 class ParallelEnvManager(object):

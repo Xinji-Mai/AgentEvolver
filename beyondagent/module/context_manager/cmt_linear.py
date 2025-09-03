@@ -400,11 +400,18 @@ class Linear_CMT(Trajectory, ContextManagerBase):
             narrow=False,
             attach="Copy Sample Message"
         )
+        print_listofdict(
+            self.steps,
+            header=f"Training task {task_id} (Final Reward {final_reward})",
+            mod="conversation",
+            narrow=False,
+        )
 
     def reward_patch(self, reward):
         _reward = copy.deepcopy(reward)
-        if self.compute_madness() < 0: _reward.outcome = -1.0
+        # if self.compute_madness() < 0: _reward.outcome = -1.0
         return _reward
+
 
     def compute_madness(self) -> float:
         """
@@ -415,8 +422,6 @@ class Linear_CMT(Trajectory, ContextManagerBase):
         for k, v in self.llm_output_mistakes.items():
             if v < threshold: return -1.0
         return 0.0
-
-
 
 
     def tokenize_steps(self, ext_steps: List[ExtendedMessage], debug=False) -> dict:
@@ -448,20 +453,15 @@ class Linear_CMT(Trajectory, ContextManagerBase):
                 return "", input_string
 
         # ANNI experience extraction and discard
+        from vsdb import bp
+        bp('X1')
         if self.task_train_exp_mode == "discard":
-            # from vsdb import bp
-            # bp('X1')
             # "\n\nSome Related Experience to help you to complete the task:<EXP>{}</EXP>"
             self.experience_template = self.config.hybrid_experience_training.experience_template
             for i, ext_msg in enumerate(ext_steps):
                 experience, new_content = extract_and_discard_experience(ext_msg.content_for_future, self.experience_template)
                 self.experiences += [experience]
                 if experience:
-                    # print('--------------')
-                    # print('--------------')
-                    # print(ext_msg.content_for_future)
-                    # print('--------------')
-                    # print(new_content)
                     ext_steps[i] = ExtendedMessage(
                         author=ext_msg.author,
                         role=ext_msg.role,

@@ -131,7 +131,7 @@ class AgentFlow(BaseAgentFlow):
             # 8. 📥 save environment output
             state = env_output["state"]
             state.pop('tool_calls', None)
-
+            self.cmt.save_env_output(state, input_msg_ref=step_input_message_arr, add_nothink=add_nothink)
 
             # 9. 🔚 determine if the episode is terminated
             self.cmt.is_terminated = env_output["is_terminated"]
