@@ -1,6 +1,6 @@
 from beyondagent.schema.trajectory import Reward, Trajectory
 from typing import List, Dict
-import uuid
+import uuid as uuid_gen
 
 
 class ContextManagerBase:
@@ -51,6 +51,7 @@ class ExtendedMessage:
             tokenizer=None,
             token_generator="manual",
             build_from_uuid="",
+            uuid=None,
         ):
         self.author = author
         self.role = role
@@ -62,7 +63,10 @@ class ExtendedMessage:
         self._content_for_future = ""
         self._info = ""
         self.clip = clip
-        self.uuid = uuid.uuid4().hex
+        if uuid is None:
+            self.uuid = uuid_gen.uuid4().hex
+        else:
+            self.uuid = uuid
         self.build_from_uuid = build_from_uuid
 
         if not clip:
@@ -81,7 +85,9 @@ class ExtendedMessage:
 
     @property
     def content_for_future(self):
-        if self._content_for_future == "": raise ValueError("content_for_future is not set, or previous llm output is empty!")
+        if self._content_for_future == "":
+            self._content_for_future = "(Empty Content)"
+            # raise ValueError("content_for_future is not set, or previous llm output is empty!")
         return self._content_for_future
 
 

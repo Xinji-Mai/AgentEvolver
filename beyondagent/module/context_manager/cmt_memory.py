@@ -257,8 +257,8 @@ class MemoryCMT(MemoryCoreCMT):
         for steps in self.grouped_steps:
             result.grouped_step_list += [self.to_role_content(steps)]
         grouped_steps: GroupedSteps = result
-        for index, steps in enumerate(grouped_steps.grouped_step_list):
-            print_listofdict(steps, mod='appworld_io', header=f'Task-{task_id} {index}/{grouped_steps.num_groups}')
+        # for index, steps in enumerate(grouped_steps.grouped_step_list):
+        #     print_listofdict(steps, mod='appworld_io', header=f'Task-{task_id} {index}/{grouped_steps.num_groups}')
         return
 
 

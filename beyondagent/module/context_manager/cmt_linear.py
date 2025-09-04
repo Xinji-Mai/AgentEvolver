@@ -1,5 +1,7 @@
 import copy
 import uuid
+import json
+import re
 import torch
 from typing import List, Union
 from beyondagent.schema.trajectory import Sample, Reward
@@ -45,18 +47,21 @@ class Linear_CMT(Trajectory, ContextManagerBase):
         self.is_terminated = False
         self.reward: Union[Reward, None] = None
         self.context_time_cost = 0
-        self.tag = ""
+        self.tag: str = ""
+        self.task_id: str = ""
+        self.task_train_exp_mode: str = ""
         self.current_batch_success_rate:float = -1.0
         self.llm_output_mistakes = {}
+        self.experiences = []
 
-        log_prob_max_token_len_per_gpu: int = self.config.actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu
-        ref_log_prob_max_token_len_per_gpu: int = self.config.actor_rollout_ref.ref.log_prob_max_token_len_per_gpu
-        actor_ppo_max_token_len_per_gpu: int = self.config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu
-        critic_ppo_max_token_len_per_gpu: int = self.config.critic.ppo_max_token_len_per_gpu
-        assert log_prob_max_token_len_per_gpu >= max_model_len
-        assert critic_ppo_max_token_len_per_gpu >= max_model_len
-        assert actor_ppo_max_token_len_per_gpu >= max_model_len
-        assert ref_log_prob_max_token_len_per_gpu >= max_model_len
+        # log_prob_max_token_len_per_gpu: int = self.config.actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu
+        # ref_log_prob_max_token_len_per_gpu: int = self.config.actor_rollout_ref.ref.log_prob_max_token_len_per_gpu
+        # actor_ppo_max_token_len_per_gpu: int = self.config.actor_rollout_ref.actor.ppo_max_token_len_per_gpu
+        # critic_ppo_max_token_len_per_gpu: int = self.config.critic.ppo_max_token_len_per_gpu
+        # assert log_prob_max_token_len_per_gpu >= max_model_len
+        # assert critic_ppo_max_token_len_per_gpu >= max_model_len
+        # assert actor_ppo_max_token_len_per_gpu >= max_model_len
+        # assert ref_log_prob_max_token_len_per_gpu >= max_model_len
         assert self.config.data.max_prompt_length + self.config.data.max_response_length <= max_model_len
 
 
@@ -130,6 +135,8 @@ class Linear_CMT(Trajectory, ContextManagerBase):
     def steps(self):
         return self.prepare_previous_context(mod='future')
 
+    def json(self):
+        return json.dumps(self.prepare_previous_context(mod='future'), ensure_ascii=False, indent=2)
 
     def prepare_next_llm_context(self):
         return self.prepare_previous_context(mod='future')
@@ -393,11 +400,18 @@ class Linear_CMT(Trajectory, ContextManagerBase):
             narrow=False,
             attach="Copy Sample Message"
         )
+        print_listofdict(
+            self.steps,
+            header=f"Training task {task_id} (Final Reward {final_reward})",
+            mod="conversation",
+            narrow=False,
+        )
 
     def reward_patch(self, reward):
         _reward = copy.deepcopy(reward)
-        if self.compute_madness() < 0: _reward.outcome = -1.0
+        # if self.compute_madness() < 0: _reward.outcome = -1.0
         return _reward
+
 
     def compute_madness(self) -> float:
         """
@@ -408,6 +422,7 @@ class Linear_CMT(Trajectory, ContextManagerBase):
         for k, v in self.llm_output_mistakes.items():
             if v < threshold: return -1.0
         return 0.0
+
 
     def tokenize_steps(self, ext_steps: List[ExtendedMessage], debug=False) -> dict:
         """
@@ -424,7 +439,37 @@ class Linear_CMT(Trajectory, ContextManagerBase):
             - Truncates output IDs as needed
         """
         from verl.utils.model import compute_position_id_with_mask
-        ext_steps = self.remove_last_non_llm_msg(ext_steps)
+        ext_steps = self.remove_last_non_llm_msg(copy.deepcopy(ext_steps))
+
+        # ANNI experience extraction and discard
+        def extract_and_discard_experience(input_string, experience_template):  # <EXP>{}</EXP>
+            pattern = re.escape(experience_template).replace(r'\{\}', '(.*?)')
+            match = re.search(pattern, input_string)
+            if match:
+                experience = match.group(1)
+                prompt = re.sub(pattern, '', input_string)
+                return experience, prompt
+            else:
+                return "", input_string
+
+        # ANNI experience extraction and discard
+        # from vsdb import bp
+        # bp('X1')
+        if self.task_train_exp_mode == "discard":
+            # "\n\nSome Related Experience to help you to complete the task:<EXP>{}</EXP>"
+            self.experience_template = self.config.hybrid_experience_training.experience_template
+            for i, ext_msg in enumerate(ext_steps):
+                experience, new_content = extract_and_discard_experience(ext_msg.content_for_future, self.experience_template)
+                self.experiences += [experience]
+                if experience:
+                    ext_steps[i] = ExtendedMessage(
+                        author=ext_msg.author,
+                        role=ext_msg.role,
+                        content=new_content,
+                        token_generator='auto',
+                        tokenizer=self.tokenizer,
+                        uuid=ext_msg.uuid,
+                    )
 
         # mapping
         input_ids = []
