@@ -438,7 +438,8 @@ async def evaluate_step_flags_parallel(tokenizer, batch, overall_score_source: s
         elif overall_score_source == "advantages":
             # SSA 模式：使用计算后的 advantage
             overall_score = _get_overall_advantage(batch.batch["advantages"][sample_idx], sample_mask)
-
+        # shuchang: 0904
+        # FIXME: 只跳过 advantage 非常小的样本
         if abs(_get_overall_advantage(batch.batch["advantages"][sample_idx], sample_mask)) < 1e-8:
             print(f"[parallel_eval] Sample {sample_idx}: advantage≈0 ({overall_score:.6f}), skipping evaluation, returning all GOOD")
             flags_per_sample[sample_idx] = [True] * len(steps_struct)
