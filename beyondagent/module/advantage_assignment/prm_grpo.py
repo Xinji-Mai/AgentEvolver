@@ -248,22 +248,54 @@ def _build_allocation(
     """
     B = step_ids.size(0)
 
+    # ---------- 工具 ----------
+    def _p95(vals):
+        if not vals:
+            return 0.0
+        s = sorted(vals)
+        k = int(round(0.95 * (len(s) - 1)))
+        return float(s[k])
+
+    mean_eps = getattr(hyper, "zscore_mean_tol", 0.05)  # 组内均值容差
+    std_tol  = getattr(hyper, "zscore_std_tol", 0.2)    # std 允许偏离 1 的幅度 => 区间 [1-std_tol, 1+std_tol]
+    small_mag_threshold = getattr(hyper, "small_mag_threshold", 0.05)
+
     # ---- 第一阶段：生成原始PRM奖励（一致性权重瓜分，逐轨迹奖励和 = ORM符号）----
     step_rewards_raw: List[List[float]] = []
+
+    # 监控：权重占比 / 退化计数 / 前置一致性不变量
+    unit_weights: List[float] = []
+    pos_consistent_shares: List[float] = []
+    neg_consistent_shares: List[float] = []
+    degenerate_total_w_count = 0
+    pre_norm_sign_agree_flags: List[float] = []
+
+    # 多数派一致性（基于 PRM 标注）
+    pos_major_good = pos_cnt = 0
+    neg_major_bad  = neg_cnt = 0
+
+    # 记录 flags 供后续 r_norm 计算 GAP
+    flags_cache: List[List[bool]] = []
+
     for i in range(B):
         # 获取当前轨迹的step数量
         K = _num_steps_from_step_ids(step_ids[i])
         if K == 0:
-            step_rewards_raw.append([]); continue
-            
+            step_rewards_raw.append([]); flags_cache.append([]); continue
+
         # 根据ORM分数符号确定轨迹类型和权重分配策略
-        is_success = bool(orm_scores[i].item() > 0)
-        flags = _align_flags(step_flags[i] if i < len(step_flags) else [], K, is_success)
-        
-        # 统计GOOD和BAD步骤数量
-        n_g = sum(1 for f in flags if f); n_b = K - n_g
-        
-        # 根据轨迹类型设置权重参数
+        raw_orm = float(orm_scores[i].item())
+        is_success = bool(raw_orm > 0)
+
+        # 对齐 flags
+        flags_i = _align_flags(step_flags[i] if i < len(step_flags) else [], K, is_success)
+        flags_cache.append(flags_i)
+
+        # GOOD/BAD 数
+        n_g = sum(1 for f in flags_i if f)
+        n_b = K - n_g
+
+        # 一致/不一致权重
         if is_success:
             # 成功轨迹：一致性步骤(GOOD)权重高，不一致性步骤(BAD)权重低
             w_g, w_b = hyper.consistent_scale, hyper.pos_unconsistent_scale
@@ -275,15 +307,225 @@ def _build_allocation(
             
         # 权重归一化：确保轨迹总奖励等于ORM符号
         total_w = n_g * w_g + n_b * w_b
-        unit = 0.0 if total_w <= hyper.eps else (1.0 / total_w)
-        r_raw = [sgn * (w_g * unit) if f else sgn * (w_b * unit) for f in flags]
+        if total_w <= hyper.eps:
+            unit = 0.0
+            degenerate_total_w_count += 1
+        else:
+            unit = 1.0 / total_w
+        unit_weights.append(unit)
+
+        # 轨迹 raw 奖励（sum == sgn 或退化为 0）
+        r_raw = [sgn * (w_g * unit) if f else sgn * (w_b * unit) for f in flags_i]
         step_rewards_raw.append([float(x) for x in r_raw])
-    
+
+        # 监控：一致性权重占比（pos: GOOD 一致；neg: BAD 一致）
+        if total_w > hyper.eps:
+            if is_success:
+                pos_consistent_shares.append((n_g * w_g) / total_w)
+            else:
+                neg_consistent_shares.append((n_b * w_b) / total_w)
+
+        # 监控：pre-norm 不变量（sum(r_raw) 与 ORM 符号应一致）
+        raw_sum = sum(r_raw)
+        raw_orm_sign = 1.0 if raw_orm > 0 else -1.0
+        pre_norm_sign_agree_flags.append(1.0 if (raw_sum * raw_orm_sign) > 0 else 0.0)
+
+        # 多数派一致性（PRM 标注 vs ORM 方向）
+        if raw_orm > 0:
+            pos_cnt += 1
+            if n_g > n_b:
+                pos_major_good += 1
+        else:
+            neg_cnt += 1
+            if n_b >= n_g:
+                neg_major_bad += 1
+
     # ---- 第二阶段：组内 z-score 标准化（获得真正的优势函数）----
     # 使用 _group_zscore_on_steps 函数进行标准化
     r_norm = _group_zscore_on_steps(step_rewards_raw, group_ids, hyper)
-    
-    return r_norm
+
+    # 监控：组内均值/方差（按 group 聚合所有 step）
+    gid_list = group_ids.view(-1).tolist()
+    group_vals: Dict[int, List[float]] = {}
+    all_abs_rnorm: List[float] = []
+    for i in range(B):
+        g = int(gid_list[i])
+        vals = r_norm[i]
+        if not vals:
+            continue
+        group_vals.setdefault(g, []).extend(vals)
+        all_abs_rnorm.extend(abs(x) for x in vals)
+
+    group_mean_abs = []
+    group_std = []
+    zscore_bad_group_cnt = 0
+    for g, vals in group_vals.items():
+        t = torch.tensor(vals, dtype=torch.float32)
+        m = float(t.mean().item())
+        s = float(t.std(unbiased=False).item())
+        group_mean_abs.append(abs(m))
+        group_std.append(s)
+        if (abs(m) > mean_eps) or (s < (1 - std_tol)) or (s > (1 + std_tol)):
+            zscore_bad_group_cnt += 1
+
+    r_norm_group_mean_abs_p95 = _p95(group_mean_abs) if group_mean_abs else 0.0
+    r_norm_group_std_p95 = _p95(group_std) if group_std else 0.0
+
+    # 监控：GOOD/BAD 的 r_norm 可分性（按 ORM 正负分别度量）
+    gap_pos_list = []
+    gap_neg_list = []
+    for i in range(B):
+        vals = r_norm[i]
+        if not vals:
+            continue
+        flags_i = flags_cache[i]
+        raw_orm = float(orm_scores[i].item())
+        good_vals = [v for v, f in zip(vals, flags_i) if f]
+        bad_vals  = [v for v, f in zip(vals, flags_i) if not f]
+        if raw_orm > 0:
+            if good_vals and bad_vals:
+                gap_pos_list.append(float(torch.tensor(good_vals).mean() - torch.tensor(bad_vals).mean()))
+        else:
+            if good_vals and bad_vals:
+                gap_neg_list.append(float(torch.tensor(bad_vals).mean() - torch.tensor(good_vals).mean()))
+    good_bad_rnorm_gap_pos = float(torch.tensor(gap_pos_list).mean().item()) if gap_pos_list else 0.0
+    good_bad_rnorm_gap_neg = float(torch.tensor(gap_neg_list).mean().item()) if gap_neg_list else 0.0
+
+    # 监控：小幅度比例（是否被稀释）
+    if all_abs_rnorm:
+        rnorm_small_mag_ratio = float(sum(1 for x in all_abs_rnorm if x < small_mag_threshold) / len(all_abs_rnorm))
+    else:
+        rnorm_small_mag_ratio = 0.0
+
+    # ---------- 第三阶段：组内标准化 ORM 并叠加到 r_norm（与 decouple 一致的分配策略） ----------
+    alpha = getattr(hyper, "alpha", 1.0)
+    orm_distribution = getattr(hyper, "orm_distribution", "last_step")
+
+    orm_list = orm_scores.detach().cpu().tolist()
+    g2idx: Dict[int, List[int]] = {}
+    for i, g in enumerate(gid_list):
+        g2idx.setdefault(int(g), []).append(i)
+
+    orm_scores_std = [0.0] * B
+    for _, idxs in g2idx.items():
+        group_vals_orm = [orm_list[i] for i in idxs]
+        t = torch.tensor(group_vals_orm, dtype=torch.float32)
+        m = t.mean()
+        s = t.std(unbiased=False)
+        if s <= hyper.eps:
+            for i in idxs:
+                orm_scores_std[i] = float(orm_list[i] - m.item())
+        else:
+            denom = s.item() + 1e-12
+            for i in idxs:
+                orm_scores_std[i] = float((orm_list[i] - m.item()) / denom)
+
+    combined_rewards: List[List[float]] = []
+    # 监控：ORM/PRM 主导度 & 后置一致性
+    per_traj_attr_abs_sum = []
+    per_traj_out_abs_sum  = []
+    per_traj_out_last_abs = []
+    sum_step_reward_sign_agree_flags: List[float] = []
+
+    for i in range(B):
+        steps_i = r_norm[i]
+        if not steps_i:
+            combined_rewards.append([]); continue
+        K = len(steps_i)
+        ostd = orm_scores_std[i]
+
+        # 组合
+        if orm_distribution == "last_step":
+            arr = [alpha * x for x in steps_i]
+            arr[-1] = arr[-1] + ostd
+        elif orm_distribution == "all_steps":
+            arr = [alpha * x + ostd for x in steps_i]
+        else:
+            raise ValueError(f"Unknown orm_distribution: {orm_distribution}")
+
+        combined_rewards.append([float(v) for v in arr])
+
+        # 监控：主导度（与 decouple 对齐）
+        a_abs = sum(abs(alpha * x) for x in steps_i)          # α * Σ|r_norm|
+        if orm_distribution == "last_step":
+            o_abs = abs(ostd)                                 # Σ|ORM|（last_step 模式）
+            o_last = abs(ostd)
+        else:
+            o_abs = K * abs(ostd)                             # all_steps：每步都有同一 orm_std
+            o_last = abs(ostd)
+
+        per_traj_attr_abs_sum.append(float(a_abs))
+        per_traj_out_abs_sum.append(float(o_abs))
+        per_traj_out_last_abs.append(float(o_last))
+
+        # 后置一致性：∑(combined_step_reward) vs 原始 ORM 符号
+        raw_orm_sign = 1.0 if float(orm_scores[i].item()) > 0.0 else -1.0
+        if sum(arr) * raw_orm_sign > 0:
+            sum_step_reward_sign_agree_flags.append(1.0)
+        else:
+            sum_step_reward_sign_agree_flags.append(0.0)
+
+    # outcome_share_last_mean & alpha_effective
+    shares = []
+    for a_abs, o_last in zip(per_traj_attr_abs_sum, per_traj_out_last_abs):
+        denom = o_last + a_abs + 1e-12
+        shares.append(float(o_last / denom))
+    outcome_share_last_mean = float(sum(shares) / max(1, len(shares)))
+
+    alpha_ratios = []
+    for a_abs, o_abs in zip(per_traj_attr_abs_sum, per_traj_out_abs_sum):
+        denom = o_abs + 1e-12
+        alpha_ratios.append(float(a_abs / denom))
+    alpha_effective = float(sum(alpha_ratios) / max(1, len(alpha_ratios)))
+
+    sum_step_reward_sign_agree = float(sum(sum_step_reward_sign_agree_flags) / max(1, len(sum_step_reward_sign_agree_flags)))
+
+    # post-norm 不变量（z-score 后按理 sum≈0）
+    post_norm_sum_vals = []
+    for vals in r_norm:
+        if vals:
+            post_norm_sum_vals.append(sum(vals))
+    post_norm_sum_mean = float(torch.tensor(post_norm_sum_vals, dtype=torch.float32).mean().item()) if post_norm_sum_vals else 0.0
+
+    # 多数派一致性（与 decouple 指标对齐，便于横向比较）
+    pos_rate = float(pos_major_good / max(1, pos_cnt))
+    neg_rate = float(neg_major_bad  / max(1, neg_cnt))
+
+    # ---------- 汇总指标 ----------
+    alloc_stats = {
+        # §1 权重分配是否按设计工作
+        "prm_allocation/consistent_weight_share_pos": float(torch.tensor(pos_consistent_shares).mean().item()) if pos_consistent_shares else 0.0,
+        "prm_allocation/consistent_weight_share_neg": float(torch.tensor(neg_consistent_shares).mean().item()) if neg_consistent_shares else 0.0,
+        "prm_allocation/unit_weight_mean": float(torch.tensor(unit_weights).mean().item()) if unit_weights else 0.0,
+        "prm_allocation/unit_weight_p95": _p95(unit_weights),
+        "prm_allocation/degenerate_total_w_count": float(degenerate_total_w_count),
+
+        # §2 z-score 有效性
+        "prm_allocation/r_norm_group_mean_abs_p95": r_norm_group_mean_abs_p95,
+        "prm_allocation/r_norm_group_std_p95": r_norm_group_std_p95,
+        "prm_allocation/zscore_bad_group_cnt": float(zscore_bad_group_cnt),
+
+        # §3 PRM 标注与 r_norm 的关系
+        "prm_allocation/good_bad_rnorm_gap_pos": good_bad_rnorm_gap_pos,
+        "prm_allocation/good_bad_rnorm_gap_neg": good_bad_rnorm_gap_neg,
+        "prm_allocation/rnorm_small_mag_ratio": rnorm_small_mag_ratio,
+
+        # §4 不变量检查
+        "prm_allocation/pre_norm_sum_sign_agree": float(sum(pre_norm_sign_agree_flags) / max(1, len(pre_norm_sign_agree_flags))),
+        "prm_allocation/post_norm_sum_mean": post_norm_sum_mean,
+
+        # §6 （叠加 ORM 后的）主导度与一致性
+        "prm_allocation/outcome_share_last_mean": outcome_share_last_mean,
+        "prm_allocation/alpha_effective": alpha_effective,
+        "prm_allocation/sum_step_reward_sign_agree": sum_step_reward_sign_agree,
+
+        # 多数派一致性（和 decouple 对齐，便于横向比较）
+        "prm_allocation/pos_traj_prm_good_majority_rate": pos_rate,
+        "prm_allocation/neg_traj_prm_bad_majority_rate": neg_rate,
+    }
+
+    return combined_rewards, alloc_stats
+
 
 def _build_allocation_c(
     orm_scores: torch.Tensor,
@@ -718,7 +960,7 @@ def compute_prm_grpo_advantages(
         step_rewards = _build_fix(orm_scores, step_flags, step_ids, group_ids, hyper)
     elif scheme == "allocation":
         # 方案2：allocation —— 一致性权重瓜分 + 组内减均值中心化
-        step_rewards = _build_allocation(orm_scores, step_flags, step_ids, group_ids, hyper)
+        step_rewards, extra_metrics = _build_allocation(orm_scores, step_flags, step_ids, group_ids, hyper)
     elif scheme == "allocation_c":
         # 方案3：allocation_c —— 一致性瓜分 → 组内归一化 → 按比例缩放投影
         step_rewards = _build_allocation_c(orm_scores, step_flags, step_ids, group_ids, hyper)
