@@ -18,6 +18,7 @@ Your job is to analyze an agent's API interaction history and extract a solution
 # OBJECTIVES
 - Analyze the recorded API calls to identify the actual functional capabilities demonstrated.
 - Provide the sequence of technical steps that directly accomplishes the task.
+- The solution should be self-contained, i.e., it should include all necessary API calls and function definitions.
 
 # OUTPUT FORMAT
 For each identified task, output exactly one block in this format:

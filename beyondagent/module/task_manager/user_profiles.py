@@ -74,6 +74,11 @@ class UserProfile:
         self._background = background
         self._entities: List[EnvEntity] = []
         self._task_preference = task
+        
+        self._rubrics=[]
+    
+    def reg_rubric(self, rubric: str):
+        self._rubrics.append(rubric)
 
     def reg_entity(self, entity: EnvEntity):
         self._entities.append(entity)
@@ -122,6 +127,11 @@ class UserProfile:
         inst_parts.append(f"- **Average number of entities involved**: {self._task_preference.num_entities}")
         inst_parts.append(f"- **Average number of operations involved**: {self._task_preference.num_opts}")
         inst_parts.append(f"- **Relation difficulty**: {self._task_preference.relation_difficulty}")
+        inst_parts.append("")
+        inst_parts.append(f"**Rubrics**:")
+        inst_parts.extend(self._rubrics)
+        inst_parts.append("You are required to follow these preferences strictly.")
+        inst_parts.append("")
 
         return "\n".join(inst_parts)
     

@@ -90,7 +90,14 @@ class LlmRandomSamplingExploreStrategy(TaskExploreStrategy):
         return [traj]
     
     def summarize(self, task: Task, trajectory: Trajectory) -> list[TaskObjective]:
-        llm_fn = self._get_llm_chat_fn(self.llm_client_summarize)
+        llm_fn = self._get_llm_chat_fn(
+            self.llm_client_summarize,
+            sampling_params={
+                "temperature": self._exploration_llm_temperature,
+                "top_p": self._exploration_llm_top_p,
+                "top_k": self._exploration_llm_top_k,
+            }
+        )
         old_objectives = self._old_retrival.retrieve_objectives(task)
         # mask information
         trajectory.steps[1]['content'] = '[MASKED]'
@@ -99,6 +106,7 @@ class LlmRandomSamplingExploreStrategy(TaskExploreStrategy):
         system_prompt, user_prompt = get_task_summarize_prompt(
             [trajectory], old_objectives, appworld.user_profile # FIXME debug profile
         )
+        assert user_prompt.find("You must follow these pattern to generate query") !=-1
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
