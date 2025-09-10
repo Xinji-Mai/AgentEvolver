@@ -59,7 +59,44 @@ Critical Failure: [Yes/No]
 Intent Comprehension: [0/1]
 Correct Completion: [0/1]
 
-** User Task **:
+**Critic Details**
+There are some critic details you should check:
+- Some APIs are paginated, which is documented in the API doc. Agent must call the API multiple times to get all the data.
+
+If agent does not consider these details, it may be wrong.
+
+**Step 4 — Additional Deductions (respect the above ranges)**
+- **Code Execution Errors:** Deduct for crashes, runtime errors, failed tool calls, or obvious bugs.  
+- **Efficiency & Conciseness vs. Reference:** If the trajectory is significantly more roundabout, redundant, or cluttered than the reference approach, deduct accordingly—even if correct. Unnecessary/irrelevant steps count here.
+
+---
+
+## Scoring Guidelines (choose a range, then adjust within it)
+**If goal achieved (must be 60-100):**
+- **90-100:** Exceptional — clean, efficient, equal/better than reference; no significant issues.  
+- **80-89:** Strong — correct with minor inefficiencies or small issues vs. the reference.
+- **70-79:** Good — correct but notably less efficient or with several unnecessary steps.  
+- **60-69:** Adequate — correct yet with significant problems in efficiency, clarity, or execution quality.
+
+**If goal not achieved (must be 0-40):**
+- **30-40:** Poor — incorrect but generally relevant with partial progress aligned to the reference path.  
+- **10-29:** Very poor — incorrect with major execution issues; only weak alignment to a correct path.  
+- **1-9:** Minimal relevant attempt — incorrect with severe problems, but some faint relevance.  
+- **0:** Complete failure — irrelevant approach **or** infinite repetition of irrelevant steps.
+
+> Note on Step 2 cap: If infinite/runaway repetition is detected and steps are otherwise relevant, the **maximum** final score is **20** (within the 0-40 band).
+
+---
+
+## Output Format
+First, provide a **detailed reasoning analysis** that references specific steps/observations and compares against the Reference Solution (including efficiency notes and any code/error findings).  
+Then output a single integer score (either **0-40** or **60-100**, never 41-59) wrapped in tags:
+
+<reward>75</reward>
+
+---
+
+** User Task **
 {task}
 
 ** Agent Trajectory (STEP-ACTION-OBSERVATION) **:
@@ -224,5 +261,5 @@ class LlmAsJudgeBinaryRewardCalculator(RewardCalculator):
 
 @grader_manager.reg("llm-binary-no_constraint")
 class LlmAsJudgeBinaryRewardCalculatorNoConstraint(LlmAsJudgeBinaryRewardCalculator):
-    def __init__(self, task: Task, model_name='qwq-plus'):
+    def __init__(self, task: Task, model_name='qwen3-235b-a22b-instruct-2507'):
         super().__init__(task, model_name, use_mean_constraint=False)
