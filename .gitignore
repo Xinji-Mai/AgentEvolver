@@ -142,3 +142,5 @@ scripts/*
 examples/*
 synthetic_data/*
 examples/example_launcher
+
+site
