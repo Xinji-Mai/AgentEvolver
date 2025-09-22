@@ -36,7 +36,6 @@ from beyondagent.module.task_manager.strategies import TaskExploreStrategy
 from beyondagent.module.task_manager.filters.filters import NaiveTaskPostFilter, TaskPostFilter
 
 from beyondagent.module.task_manager.base import LlmClient, TaskObjectiveRetrieval
-from beyondagent.module.task_manager.strategies.deduplication import LlmDedupSamplingExploreStrategy
 from beyondagent.module.task_manager.strategies.random import LlmRandomSamplingExploreStrategy
 from beyondagent.module.task_manager.user_profiles import UserProfile
 from beyondagent.schema.task import Task, TaskObjective
@@ -272,8 +271,6 @@ def get_exploration_strategy(name:str, strategy_args, *, tokenizer, config)->Tas
     logger.info(f"loading exploration strategy {name}")
     if name=="random":
         return LlmRandomSamplingExploreStrategy(tokenizer=tokenizer,config=config,**strategy_args)
-    elif name == "deduplication":
-        return LlmDedupSamplingExploreStrategy(tokenizer=tokenizer,config=config,**strategy_args)
     else:
         raise NotImplementedError(f"exploration strategy {name} not implemented")
 
