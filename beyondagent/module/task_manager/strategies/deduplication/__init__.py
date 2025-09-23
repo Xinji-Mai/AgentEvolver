@@ -98,7 +98,6 @@ class LlmDedupSamplingExploreStrategy(TaskExploreStrategy):
         task=task.copy()
         task.evaluator='synthetic'
         tasks = parse_tasks_from_response(task, llm_output)
-        # FIXME save log
         return tasks
     
     def _get_llm_chat_fn(self, sampling_params: Optional[dict] = None) -> Callable:

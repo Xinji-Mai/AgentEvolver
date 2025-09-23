@@ -49,7 +49,7 @@ class LlmRandomSamplingExploreStrategy(TaskExploreStrategy):
     def explore(self, task: Task, data_id: str, rollout_id: str) -> list[Trajectory]:
         env_worker = EnvWorker(
             task=task,
-            config=self._config, # FIXME 不是，你既然一定需要这3个东西就不要设置成 = None 啊 
+            config=self._config, # FIXME 既然一定需要这3个东西就不要设置成 = None
             thread_index=0,
             tokenizer=self._tokenizer
         )
