@@ -651,14 +651,6 @@ def _build_decouple(
             combined_rewards.append([])
             continue
 
-        # ⭐ Combine standardized PRM and ORM rewards for each trajectory
-        combined_rewards_i = [alpha * prm + orm for prm, orm in zip(prm_rewards_std[i], [orm_scores_std[i]] * len(prm_rewards_std[i]))]
-        if enable_length_normalization:
-            K = len(combined_rewards_i)
-            combined_rewards_i = [r / math.sqrt(K) for r in combined_rewards_i]
-
-        combined_rewards.append(combined_rewards_i)
-
         prm_std = prm_rewards_std[i]
         orm_std = orm_scores_std[i]
         K = len(prm_std)
@@ -828,18 +820,7 @@ def broadcast_step_adv_to_tokens(
         valid = sid_row >= 0
         if torch.any(valid):
             sids = sid_row[valid]
-            # ==== DEBUG: guard before adv_i[sids] ====
-            if torch.numel(sids) > 0:
-                max_sid = int(sids.max().item())
-                if max_sid >= adv_i.numel():
-                    # 这里直接抛出更清楚的错误信息，定位哪个样本炸了
-                    raise RuntimeError(
-                        f"[broadcast_check] sample_idx={i} max_sid={max_sid} "
-                        f"len(adv_i)={adv_i.numel()} uniq_sids={sids.unique().tolist()}"
-                    )
-            # ==== /DEBUG ====
             out[i, valid] = adv_i[sids]  # ⭐ Assign advantage values to the corresponding token positions
-        
     return out
 
 # =========================
@@ -913,14 +894,13 @@ def compute_prm_grpo_advantages(
 
     # ---- 3. ORM处理：计算ORM分数 ----
     # 对token-level奖励求和得到轨迹级ORM分数，用于各个方案的奖励构造
-    orm_sum = token_level_rewards.sum(dim=1)   # (B,)
-    # orm_scores = torch.where(orm_sum > 0, torch.ones_like(orm_sum), -torch.ones_like(orm_sum)).to(dtype=torch.float32)
-    orm_scores = torch.where(orm_sum > 0.5, torch.ones_like(orm_sum), -torch.ones_like(orm_sum)).to(dtype=torch.float32)  # ⭐ Compute ORM scores based on token-level rewards
+    orm_scores = token_level_rewards.sum(dim=1)   # (B,)
+    # orm_scores = torch.where(orm_sum > 0, torch.ones_like(orm_sum), -torch.ones_like(orm_sum)).to(dtype=torch.float32)  # ⭐ Compute ORM scores based on token-level rewards
 
     # ---- 4. 方案选择阶段：根据scheme选择具体的奖励构造方案 ----
     extra_metrics = {}
     scheme = (scheme or "decouple").lower()
-
+    step_rewards = None
     if scheme == "allocation":
         # 方案2：allocation —— 一致性权重瓜分 + 组内减均值中心化
         step_rewards, extra_metrics = _build_allocation(orm_scores, step_flags, step_ids, group_ids, hyper)
@@ -933,17 +913,6 @@ def compute_prm_grpo_advantages(
     # ---- 5. 优势值计算阶段：step后缀和 + 广播到token ----
     # 对step-level奖励进行后缀和计算得到step-level优势值
     step_adv = suffix_sum_on_steps(step_rewards)
-    # 强制：以 step_ids 的 max_sid+1 为准，对 adv[i] 做 pad/trim
-    B = step_ids.size(0)
-    for i in range(B):
-        K = _num_steps_from_step_ids(step_ids[i])
-        cur = step_adv[i] if i < len(step_adv) and step_adv[i] is not None else []
-        if len(cur) < K:
-            pad_val = cur[-1] if len(cur) > 0 else 0.0  # 空就用0填
-            step_adv[i] = cur + [pad_val] * (K - len(cur))
-        elif len(cur) > K:
-            step_adv[i] = cur[:K]
-    # 将step-level优势值广播到token-level
     advantages = broadcast_step_adv_to_tokens(step_adv, step_ids)
 
     # ---- 6. 结果返回阶段：构造返回字典 ----

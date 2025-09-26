@@ -18,7 +18,7 @@ def build_batch_adv_evaluation_prompt(
     Returns:
         list[dict]: A list of dictionaries, each containing the system message and the user message for the evaluation prompt.
     """
-    polarity = "positive" if overall_adv > 0 else "negative"
+    polarity = "positive" if overall_adv > 0.5 else "negative"
     # prompt3
     # sys_msg = (
     #     "You are an expert *process* reward evaluator.\n\n"
@@ -54,9 +54,9 @@ The single message you receive always contains three labelled sections:
   3. SOLUTION TRAJECTORY – a numbered list of assistant steps.
 
 Evaluation rule:
-• If OVERALL ADVANTAGE is **positive (> 0)**, judge each step by whether its ACTION
+• If OVERALL ADVANTAGE is **positive (> 0.5)**, judge each step by whether its ACTION
   makes the overall answer *even better* than before (incremental improvement).
-• If OVERALL ADVANTAGE is **negative (< 0)**, judge each step by whether it *actively
+• If OVERALL ADVANTAGE is **negative (≤ 0.5)**, judge each step by whether it *actively
   corrects the existing error*. Mark GOOD **only** when the ACTION clearly fixes or
   moves the answer towards correctness; otherwise mark BAD.
 
@@ -76,14 +76,14 @@ Reply IN THE REQUIRED OUTPUT FORMAT and output nothing else."""
 
 **EVALUATION RULES (By Score Sign):**
 
-*   **If OVERALL PERFORMANCE SCORE is POSITIVE (> 0):**
+*   **If OVERALL PERFORMANCE SCORE is POSITIVE (> 0.5):**
     *   An individual step is classified as **GOOD** if its `ACTION` (and its result, if `OBSERVATION` is present) **contributed positively** to achieving the final advantageous outcome. This includes:
         *   Making a significant **incremental improvement** towards the solution.
         *   **Correctly executing** a necessary sub-task.
         *   **Preserving or building upon** correct prior steps.
     *   An individual step is classified as **BAD** if its `ACTION` (or result) was **neutral, irrelevant, or detrimental** to the eventual positive outcome.
 
-*   **If OVERALL PERFORMANCE SCORE is NEGATIVE (< 0):**
+*   **If OVERALL PERFORMANCE SCORE is NEGATIVE (≤ 0.5):**
     *   An individual step is classified as **GOOD** **only** if its `ACTION` (and its result, if `OBSERVATION` is present) **actively attempted to mitigate or correct** an existing problem or error trajectory. Specifically:
         *   **Successfully fixing** an earlier error.
         *   **Actively moving the solution back towards correctness** after a misstep.
@@ -170,7 +170,7 @@ def build_batch_reward_evaluation_prompt(
     Returns:
         list[dict]: A list of dictionaries, each containing a 'role' and 'content' key, representing the system and user messages.
     """
-    polarity = "positive" if overall_adv > 0 else "negative"
+    polarity = "positive" if overall_adv > 0.5 else "negative"
     
     sys_msg = """You are an expert *process reward evaluator*, specializing in **attributional analysis** of multi-step solution trajectories.
 
@@ -183,7 +183,7 @@ def build_batch_reward_evaluation_prompt(
 
 **EVALUATION RULES:**
 
-*   **If OVERALL REWARD SCORE is POSITIVE (> 0) - SUCCESSFUL COMPLETION:**
+*   **If OVERALL REWARD SCORE is POSITIVE (> 0.5) - SUCCESSFUL COMPLETION:**
     *   Mark a step as **GOOD** if it **directly advanced progress** toward successful task completion:
         *   Correctly implementing required functionality
         *   Making measurable progress on the core objective  
@@ -193,7 +193,7 @@ def build_batch_reward_evaluation_prompt(
         *   Wasting effort on irrelevant activities
         *   Making decisions that hindered overall progress
 
-*   **If OVERALL REWARD SCORE is NON-POSITIVE (≤ 0) - TASK FAILURE:**
+*   **If OVERALL REWARD SCORE is NON-POSITIVE (≤ 0.5) - TASK FAILURE:**
     *   Mark a step as **GOOD** **only if** it **attempted genuine error correction**:
         *   Identifying and diagnosing specific problems
         *   Implementing concrete fixes with observable improvement
