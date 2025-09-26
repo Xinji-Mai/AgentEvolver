@@ -114,6 +114,7 @@ class AgentFlow(BaseAgentFlow):
 
         request_id: str = ""
         err_in_generating=False
+        err_in_env = False
         for act_step in range(self.max_steps):
             # 2. 🔄 Update thread progress
             tmux['step'][thread_index] = act_step
@@ -132,7 +133,7 @@ class AgentFlow(BaseAgentFlow):
             is_safe: bool = self.cmt.check_context_token_num_safe(step_input_message_arr)  # ⭐ Check if the context token count is safe
             if not is_safe:
                 logger.warning(f"Token overflow detected at step {act_step}. Current token count exceeds the limit.")
-                self.cmt.is_terminated = True
+                self.cmt.is_terminated = False # trajectory not finished.
                 break
 
             # 5. 🤖 call llm
@@ -162,7 +163,8 @@ class AgentFlow(BaseAgentFlow):
                     , mod='c')
             except Exception as e:
                 logger.bind(exception=True).exception(f"call env.step error with {e}")
-                self.cmt.is_terminated = True
+                err_in_env = True
+                self.cmt.is_terminated = False # trajectory not finished.
                 state = {"content": str(e), "role": "user"}
                 env_output = {
                     "reward": 0,
@@ -177,7 +179,7 @@ class AgentFlow(BaseAgentFlow):
 
             # 9. 🔚 determine if the episode is terminated
             self.cmt.is_terminated = env_output["is_terminated"]  # ⭐ Determine if the episode is terminated
-            if self.cmt.is_terminated:
+            if self.cmt.is_terminated or err_in_env:
                 break
 
         tmux['step'][thread_index] = -1
