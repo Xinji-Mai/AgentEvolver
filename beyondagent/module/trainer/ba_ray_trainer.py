@@ -1,6 +1,4 @@
-# Copyright 2024 Bytedance Ltd. and/or its affiliates
-# Copyright 2023-2024 SGLang Team
-# Copyright 2025 ModelBest Inc. and/or its affiliates
+# Copyright 2024 Alibaba Tongyi EconML Lab. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +68,7 @@ from beyondagent.module.credit_manager.adca_grpo_pipeline import apply_adca_grpo
 def parse_reward_from_dataproto(data: DataProto, return_dict=False) -> dict | torch.Tensor:
     """
     Compute reward for a batch of data.
+
     Args:
         data: DataProto object containing the input data.
         return_dict: Whether to return a dictionary or just the reward tensor.
@@ -81,7 +80,7 @@ def parse_reward_from_dataproto(data: DataProto, return_dict=False) -> dict | to
     # Within DataFlow, world.execute() will pass a float score, which will be contained in the DataProto.non_tensor_batch('reward_scores')
 
     # Initialize reward tensor
-    reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)  # (bs, reslen)
+    reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)  # (bs, reslen)  # ⭐ Initialize the reward tensor
     reward_extra_info = defaultdict(list)
 
     # Batch-level processing
@@ -94,7 +93,7 @@ def parse_reward_from_dataproto(data: DataProto, return_dict=False) -> dict | to
 
     # Get reward scores
     reward_scores_list = [item["outcome"] for item in data.non_tensor_batch["reward_scores"]]
-    reward_scores = torch.tensor(reward_scores_list, device=reward_tensor.device, dtype=torch.float32)  # (bs, )
+    reward_scores = torch.tensor(reward_scores_list, device=reward_tensor.device, dtype=torch.float32)  # (bs, )  # ⭐ Convert reward scores to a tensor
 
     # Use advanced indexing to assign rewards
     reward_tensor[torch.arange(len(data)), response_lengths - 1] = reward_scores
@@ -133,13 +132,21 @@ def create_rl_sampler(data_config, dataset):
 
 def union_gen_batch_via_task_id(tasks, batch: DataProto, gen_batch_output: DataProto):
     """
-    Union the gen_batch_output with the batch based on task_id.
+    Merges the `gen_batch_output` with the `batch` based on the `task_id`.
+
+    Args:
+        tasks (list): A list of task objects, each containing a `task_id`.
+        batch (DataProto): The original batch of data.
+        gen_batch_output (DataProto): The generated batch output that needs to be merged.
+
+    Returns:
+        DataProto: The final merged batch.
     """
-    map_task_id_to_index = {t.task_id:i for i, t in enumerate(tasks)}
+    map_task_id_to_index = {t.task_id:i for i, t in enumerate(tasks)}  # ⭐ Create a mapping from task_id to its index in tasks
     gen_task_task_ids = gen_batch_output.non_tensor_batch['task_ids']
     indices = [map_task_id_to_index[tid] for tid in gen_task_task_ids]
     batch_extend = batch.select_idxs(indices)
-    batch_final = batch_extend.union(gen_batch_output)
+    batch_final = batch_extend.union(gen_batch_output)  # ⭐ Merge the selected part of the batch with the gen_batch_output
     return batch_final
 
 
@@ -175,14 +182,14 @@ def compute_grpo_outcome_advantage(
     id2score = defaultdict(list)
     id2mean = {}
     id2std = {}
-    
+
     if scores.dim()!=1:
         logger.warning("scores.dim()!=1")
 
     with torch.no_grad():
         bsz = scores.shape[0]
         batch_std=torch.std(scores)
-        
+
         for i in range(bsz):
             id2score[index[i]].append(scores[i])
         for idx in id2score:
@@ -209,7 +216,8 @@ def compute_grpo_outcome_advantage(
 
 
 def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, config=None):
-    """Compute advantage estimates for policy optimization.
+    """
+    Compute advantage estimates for policy optimization.
 
     This function computes advantage estimates using various estimators like GAE, GRPO, REINFORCE++, etc.
     The advantage estimates are used to guide policy optimization in RL algorithms.
@@ -263,7 +271,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             response_mask=grpo_calculation_mask,
             index=data.non_tensor_batch["uid"],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-        )
+        )  # ⭐ Compute advantages and returns for GRPO
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
     else:
@@ -280,7 +288,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             adv_kwargs["reward_baselines"] = data.batch["reward_baselines"]
 
         # calculate advantage estimator
-        advantages, returns = adv_estimator_fn(**adv_kwargs)
+        advantages, returns = adv_estimator_fn(**adv_kwargs)  # ⭐ Compute advantages and returns for other estimators
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
     return data
@@ -307,8 +315,24 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         shuffle_trainset:bool=False,
         device_name="cuda",
     ):
-        """Initialize distributed PPO trainer with Ray backend."""
+        """
+        Initialize distributed PPO trainer with Ray backend.
 
+        Args:
+            config: Configuration object containing various settings.
+            tokenizer: Tokenizer used for processing text.
+            role_worker_mapping (dict[Role, WorkerType]): Mapping of roles to worker types.
+            resource_pool_manager (ResourcePoolManager): Manager for resource pools.
+            train_task_manager (TaskManager): Task manager for training tasks.
+            val_task_manager (TaskManager): Task manager for validation tasks.
+            ray_worker_group_cls (RayWorkerGroup, optional): Class for Ray worker groups. Defaults to RayWorkerGroup.
+            processor (optional): Processor for additional data processing.
+            reward_fn (optional): Function to compute rewards.
+            val_reward_fn (optional): Function to compute validation rewards.
+            collate_fn (optional): Function to collate data.
+            shuffle_trainset (bool, optional): Whether to shuffle the training dataset. Defaults to False.
+            device_name (str, optional): Name of the device to use. Defaults to "cuda".
+        """
         self.tokenizer = tokenizer
         self.processor = processor
         self.config = config
@@ -316,10 +340,10 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         self.val_reward_fn = val_reward_fn
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
-        assert self.hybrid_engine, "Currently, only support hybrid engine"
+        assert self.hybrid_engine, "Currently, only support hybrid engine"  # ⭐ Ensure the hybrid engine is supported
 
         if self.hybrid_engine:
-            assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
+            assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"  # ⭐ Ensure ActorRollout role is present in the mapping
 
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
@@ -362,17 +386,24 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         self.val_task_manager=val_task_manager
         self._collate_fn=collate_fn
 
-        self._create_dataloader_from_manager(collate_fn, shuffle_trainset)
+        self._create_dataloader_from_manager(collate_fn, shuffle_trainset)  # ⭐ Create dataloader from the provided manager
 
 
     def init_workers(self):
-        """Initialize distributed training workers using Ray backend.
+        """
+        Initializes distributed training workers using the Ray backend.
 
-                Creates:
-                1. Ray resource pools from configuration
-                2. Worker groups for each role (actor, critic, etc.)
-                """
-        self.resource_pool_manager.create_resource_pool()
+        This function creates:
+        1. Ray resource pools from configuration
+        2. Worker groups for each role (actor, critic, etc.)
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self.resource_pool_manager.create_resource_pool()  # ⭐ Initialize the resource pools
 
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
@@ -427,19 +458,19 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
         if self.use_critic:
             self.critic_wg = all_wg["critic"]
-            self.critic_wg.init_model()
+            self.critic_wg.init_model()  # ⭐ Initialize the critic model
 
         if self.use_reference_policy and not self.ref_in_actor:
             self.ref_policy_wg = all_wg["ref"]
-            self.ref_policy_wg.init_model()
+            self.ref_policy_wg.init_model()  # ⭐ Initialize the reference policy model
 
         if self.use_rm:
             self.rm_wg = all_wg["rm"]
-            self.rm_wg.init_model()
+            self.rm_wg.init_model()  # ⭐ Initialize the reward model
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
         self.actor_rollout_wg = all_wg["actor_rollout"]
-        self.actor_rollout_wg.init_model()
+        self.actor_rollout_wg.init_model()  # ⭐ Initialize the actor rollout model
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
@@ -448,7 +479,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             self.async_rollout_mode = True
             self.async_rollout_manager = BaAsyncLLMServerManager(
                 config=self.config,
-                worker_group=self.actor_rollout_wg)
+                worker_group=self.actor_rollout_wg)  # ⭐ Create the asynchronous rollout manager
 
         self.reward_fn = parse_reward_from_dataproto
         self.val_reward_fn = parse_reward_from_dataproto
@@ -467,6 +498,12 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         3. Use task manager to mix tasks from different sources.
         4. Adapt datasets and create dataloaders used in the trainer.
 
+        Args:
+            collate_fn (callable): The function to use for collating data into batches.
+            shuffle_trainset (bool, optional): Whether to shuffle the training set. Defaults to True.
+
+        Returns:
+            None
         """
         # TODO: we have to make sure the batch size is divisible by the dp size
         if collate_fn is None:
@@ -507,7 +544,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             drop_last=True,
             collate_fn=collate_fn,
             sampler=create_rl_sampler(self.config.data,self.train_dataset),
-        )
+        )  # ⭐ Create the train dataloader with specified parameters
 
         val_batch_size = self.config.data.val_batch_size  # Prefer config value if set
         if val_batch_size is None:
@@ -520,7 +557,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             shuffle=self.config.data.get("validation_shuffle", True),
             drop_last=False,
             collate_fn=collate_fn,
-        )
+        )  # ⭐ Create the validation dataloader with specified parameters
 
         # train dataloader is on-the-fly, so we don't need to check the size
         # assert len(self.train_dataloader) >= 1, "Train dataloader is empty!"
@@ -552,21 +589,43 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
 
     def _get_attribution_config(self):
+        """
+        Retrieves and validates the configuration for attribution-driven credit assignment, including the setup for API retry attempts.
+
+        Returns:
+            dict: The validated and possibly updated configuration dictionary.
+
+        Raises:
+            ValueError: If the required 'attribution_driven_credit_assignment' block is missing from the configuration.
+        """
         if not hasattr(self.config, 'attribution_driven_credit_assignment'):
             raise ValueError("attribution_driven_credit_assignment configuration block is required")
-        
+
         config = self.config.attribution_driven_credit_assignment
-        
+
         # 设置默认的API重试次数
         if not hasattr(config, 'api_max_retries'):
-            config.api_max_retries = 200  # 默认200次重试
+            config.api_max_retries = 200  # ⭐ Set the default number of API retries to 200
             print(f"[attribution_config] Using default api_max_retries: {config.api_max_retries}")
-        
+
         return config
 
 
     def _validate_config(self):
-        # 0623 yunpeng add. keep the same as the original func except for the param of tool_config_path
+        """
+        Validates the configuration settings to ensure they are consistent and meet the necessary requirements for the training process.
+
+        This function checks:
+        - The total number of GPUs and their allocation.
+        - The total batch size and its divisibility by the minimal possible batch size.
+        - Mutual exclusivity of certain micro-batch size parameters.
+        - Consistency in actor, critic, and reward model configurations.
+        - Other critical settings such as loss aggregation mode and sequence parallelism.
+
+        Raises:
+            AssertionError: If any of the configuration settings do not meet the required conditions.
+            ValueError: If mutually exclusive parameters are both set or neither is set.
+        """
         config = self.config
         # number of GPUs total
         n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
@@ -640,11 +699,11 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         #    ppo_mini_batch_size is divisible by ppo_micro_batch_size
         #    ppo_micro_batch_size * sequence_parallel_size >= n_gpus
         if not config.actor_rollout_ref.actor.use_dynamic_bsz:
-            assert config.data.train_batch_size >= config.actor_rollout_ref.actor.ppo_mini_batch_size
+            assert config.data.train_batch_size >= config.actor_rollout_ref.actor.ppo_mini_batch_size  # ⭐ Ensure train_batch_size is at least as large as ppo_mini_batch_size
             sp_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
             if config.actor_rollout_ref.actor.ppo_micro_batch_size is not None:
-                assert config.actor_rollout_ref.actor.ppo_mini_batch_size % config.actor_rollout_ref.actor.ppo_micro_batch_size == 0
-                assert config.actor_rollout_ref.actor.ppo_micro_batch_size * sp_size >= n_gpus
+                assert config.actor_rollout_ref.actor.ppo_mini_batch_size % config.actor_rollout_ref.actor.ppo_micro_batch_size == 0  # ⭐ Ensure ppo_mini_batch_size is divisible by ppo_micro_batch_size
+                assert config.actor_rollout_ref.actor.ppo_micro_batch_size * sp_size >= n_gpus  # ⭐ Ensure sufficient GPU allocation for micro-batch size and sequence parallelism
 
         assert config.actor_rollout_ref.actor.loss_agg_mode in [
             "token-mean",
@@ -658,11 +717,11 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
         # critic
         if self.use_critic and not config.critic.use_dynamic_bsz:
-            assert config.data.train_batch_size >= config.critic.ppo_mini_batch_size
+            assert config.data.train_batch_size >= config.critic.ppo_mini_batch_size  # ⭐ Ensure train_batch_size is at least as large as ppo_mini_batch_size for critic
             sp_size = config.critic.get("ulysses_sequence_parallel_size", 1)
             if config.critic.ppo_micro_batch_size is not None:
-                assert config.critic.ppo_mini_batch_size % config.critic.ppo_micro_batch_size == 0
-                assert config.critic.ppo_micro_batch_size * sp_size >= n_gpus
+                assert config.critic.ppo_mini_batch_size % config.critic.ppo_micro_batch_size == 0  # ⭐ Ensure ppo_mini_batch_size is divisible by ppo_micro_batch_size for critic
+                assert config.critic.ppo_micro_batch_size * sp_size >= n_gpus  # ⭐ Ensure sufficient GPU allocation for micro-batch size and sequence parallelism for critic
 
         # Check if use_remove_padding is enabled when using sequence parallelism for fsdp
         if config.actor_rollout_ref.actor.strategy == "fsdp" and (config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) > 1 or config.actor_rollout_ref.ref.get("ulysses_sequence_parallel_size", 1) > 1):
@@ -690,9 +749,22 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
     ##################
     # ANNI
     def _dump_generations(self, inputs, outputs, experiences, scores, reward_extra_infos_dict, dump_path):
-        """Dump rollout/validation samples as JSONL."""
+        """
+        Dumps rollout/validation samples as JSONL.
+
+        Args:
+            inputs (list): List of input data.
+            outputs (list): List of output data.
+            experiences (list): List of experience data.
+            scores (list): List of score data.
+            reward_extra_infos_dict (dict): Dictionary containing additional reward information.
+            dump_path (str): Path to the directory where the JSONL file will be saved.
+
+        Returns:
+            None
+        """
         os.makedirs(dump_path, exist_ok=True)
-        filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")
+        filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")  # ⭐ Create the filename for the JSONL file
 
         n = len(inputs)
         base_data = {
@@ -713,7 +785,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             lines.append(json.dumps(entry, ensure_ascii=False))
 
         with open(filename, "w") as f:
-            f.write("\n".join(lines) + "\n")
+            f.write("\n".join(lines) + "\n")  # ⭐ Write the data to the JSONL file
 
         print(f"Dumped generations to {filename}")
 
@@ -722,9 +794,9 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         Asynchronously submit trajectory summarization tasks in batches and collect all experiences.
 
         Args:
-            trajectories: List of trajectories to summarize.
-            batch_size: Number of trajectories per batch.
-            sleep_time: Delay between batch submissions in seconds.
+            trajectories (List[Any]): List of trajectories to summarize.
+            batch_size (int): Number of trajectories per batch.
+            sleep_time (int): Delay between batch submissions in seconds.
 
         Returns:
             List[Any]: List of summarized experiences.
@@ -743,7 +815,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                 self.em_client.call_summarizer,
                 trajectories=batch,
                 workspace_id=self.config.experience_maker.workspace_id
-            )
+            )  # ⭐ Submit the batch of trajectories for summarization
             summary_tasks.append(task)
 
             if i + batch_size < total_trajectories:
@@ -752,7 +824,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         print("Wait for all summary tasks to complete~")
         for task in summary_tasks:
             try:
-                result = task.result()
+                result = task.result()  # ⭐ Get the result of the summarization task
                 if result:
                     experience_list.extend(result)
             except Exception as e:
@@ -766,6 +838,18 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
     ##################
 
     def _validate(self):
+        """
+        Validates the model by generating sequences, collecting samples, and storing the results.
+
+        This function processes each batch of validation data, generates outputs, and collects
+        input, output, and experience information for further analysis.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
         data_source_lst = []
         add_exp_lst = []    # add experience list by ANNI
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
@@ -785,7 +869,6 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model":
                 return {}
-
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
             non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
@@ -825,7 +908,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                             # evaluator=gen_batch.non_tensor_batch['extras'][i]['evaluator'], # avoid potential bugs
                          ) for i in range(len(test_gen_batch))]
                 print("=" * 10 + "start validate rollout" + "=" * 10)
-                trajectories = self.env_manager.rollout(tasks, mode="validate", epoch=f"test.1.{i}")
+                trajectories = self.env_manager.rollout(tasks, mode="validate", epoch=f"test.1.{i}")  # ⭐ Execute the rollout to generate trajectories
                 print("=" * 10 + "end validate rollout" + "=" * 10)
                 test_output_gen_batch = self.env_manager.to_dataproto(trajectories)
                 # test_output_gen_batch_padded = self.explorer_manager.rollout(test_gen_batch_padded)
@@ -871,7 +954,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
             # test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
-            result = self.val_reward_fn(test_batch, return_dict=True)
+            result = self.val_reward_fn(test_batch, return_dict=True)  # ⭐ Evaluate the test batch using the reward function
             reward_tensor = result["reward_tensor"]
             scores = reward_tensor.sum(-1).cpu().tolist()
             sample_scores.extend(scores)
@@ -903,7 +986,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
         data_sources = np.concatenate(data_source_lst, axis=0)
 
-        data_src2var2metric2val = process_validation_metrics(data_sources, sample_inputs, reward_extra_infos_dict)
+        data_src2var2metric2val = process_validation_metrics(data_sources, sample_inputs, reward_extra_infos_dict)  # ⭐ Process the validation metrics for different data sources
         metric_dict = {}
         for data_source, var2metric2val in data_src2var2metric2val.items():
             core_var = "acc" if "acc" in var2metric2val else "reward"
@@ -945,7 +1028,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
-            val_metrics = self._validate()
+            val_metrics = self._validate()  # ⭐ Perform initial validation and get the validation metrics
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
@@ -1038,7 +1121,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
                             # TODO enable tracing by jinli 0619
                             print("=" * 10 + "start fit rollout" + "=" * 10)
-                            trajectories = self.env_manager.rollout(tasks, mode="sample", epoch=f"train.{epoch}.{i}")
+                            trajectories = self.env_manager.rollout(tasks, mode="sample", epoch=f"train.{epoch}.{i}")  # ⭐ Generate trajectories using the environment manager
                             assert len(trajectories)>0, "{len(trajectories)=}?"
                             print("=" * 10 + "end fit rollout" + "=" * 10)
 
@@ -1062,7 +1145,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         with _timer("gen_max", timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
-                            gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
+                            gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)  # ⭐ Generate baseline sequences for advantage estimation
 
                             batch = batch.union(gen_baseline_output)
                             reward_baseline_tensor = self.reward_fn(batch)
@@ -1070,18 +1153,18 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
                             batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
 
-                            batch.batch["reward_baselines"] = reward_baseline_tensor
+                            batch.batch["reward_baselines"] = reward_baseline_tensor  # ⭐ Add reward baselines to the batch
 
                             del gen_baseline_batch, gen_baseline_output
 
-                    batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
+                    batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)  # ⭐ Generate unique UIDs for each item in the batch
 
                     # 在新的代码中，data rollout 后产生了一些新的 extra，这些 extra 应当和原始 extra 合并
                     # assert len(gen_batch_output.non_tensor_batch["extras"].keys()&batch_extras.keys())==0, "extra of extra should not overlap with existing extra...how funny..."
-                    batch.non_tensor_batch['original_extras']=batch_extras # 在翻n倍前先赋值
-                    batch = union_gen_batch_via_task_id(tasks, batch, gen_batch_output)
+                    batch.non_tensor_batch['original_extras']=batch_extras  # ⭐ Store original extras before scaling
+                    batch = union_gen_batch_via_task_id(tasks, batch, gen_batch_output)  # ⭐ Merge generated batch with the current batch
 
-                    batch.batch["response_mask"] = compute_response_mask(batch)
+                    batch.batch["response_mask"] = compute_response_mask(batch)  # ⭐ Compute and add response mask to the batch
 
                     # summary for experience of experience_maker, updating candidate context
                     ##################
@@ -1091,7 +1174,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         if self.global_steps % self.config.experience_maker.updated_freq == 0:
                             summary_task = self.thread_pool.submit(self.em_client.call_summarizer,
                                                                trajectories=trajectories,
-                                                               workspace_id=self.config.experience_maker.workspace_id)
+                                                               workspace_id=self.config.experience_maker.workspace_id)  # ⭐ Submit a summary task asynchronously
                             print("async submit summary_task~")
                     # summary_task = None
                     # if self.config.experience_maker.enable_summarizer:
@@ -1104,25 +1187,25 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
                     if self.config.trainer.balance_batch:
-                        self._balance_batch(batch, metrics=metrics)
+                        self._balance_batch(batch, metrics=metrics)  # ⭐ Balance the batch to distribute valid tokens evenly
 
                     # compute global_valid tokens
-                    batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
+                    batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()  # ⭐ Compute and store the global token numbers
 
                     with _timer("reward", timing_raw):
                         # compute reward model score
                         if self.use_rm:
-                            reward_tensor = self.rm_wg.compute_rm_score(batch)
+                            reward_tensor = self.rm_wg.compute_rm_score(batch)  # ⭐ Compute reward scores using the reward model
                             batch = batch.union(reward_tensor)
 
                         if self.config.reward_model.launch_reward_fn_async:
                             future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
                         else:
-                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
+                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)  # ⭐ Compute rewards and extra information
 
                     # recompute old_log_probs
                     with _timer("old_log_prob", timing_raw):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)  # ⭐ Compute old log probabilities
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
@@ -1160,7 +1243,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         # compute reference log_prob
                         with _timer("ref", timing_raw):
                             if not self.ref_in_actor:
-                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)  # ⭐ Compute reference log probabilities
                             else:
                                 ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
@@ -1168,14 +1251,14 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                     # compute values
                     if self.use_critic:
                         with _timer("values", timing_raw):
-                            values = self.critic_wg.compute_values(batch)
+                            values = self.critic_wg.compute_values(batch)  # ⭐ Compute values using the critic model
                             batch = batch.union(values)
 
                     with _timer("adv", timing_raw):
                         # we combine with rule-based rm
                         reward_extra_infos_dict: dict[str, list]
                         if self.config.reward_model.launch_reward_fn_async:
-                            reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
+                            reward_tensor, reward_extra_infos_dict = ray.get(future_reward)  # ⭐ Get the reward tensor and extra info from the async call
                         batch.batch["token_level_scores"] = reward_tensor
 
                         print(f"{list(reward_extra_infos_dict.keys())=}")
@@ -1184,7 +1267,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
-                            batch, kl_metrics = apply_kl_penalty(batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty)
+                            batch, kl_metrics = apply_kl_penalty(batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty)  # ⭐ Apply KL divergence penalty
                             metrics.update(kl_metrics)
                         else:
                             batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
@@ -1225,8 +1308,6 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                             )
                             metrics.update(adca_metrics)
                         # ==================== End ADCA GRPO ====================
-                        
-
                         # Apply decay factor of 0.5 to non_tensor_batch['extras'][i]['evaluator'] != 'env'
                         if os.environ.get("DEBUG_ARG","").find("synth_decay")!=-1:
                             if epoch==0 and i==0:
@@ -1237,12 +1318,12 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                                     assert 'evaluator' in batch.non_tensor_batch['extras'][i]
                                     evaluator = batch.non_tensor_batch['extras'][i]['evaluator']
                                     if evaluator != 'env':
-                                        batch.batch["advantages"][i] *= 0.5
+                                        batch.batch["advantages"][i] *= 0.5  # ⭐ Apply decay factor to synthetic data
 
                     # update critic
                     if self.use_critic:
                         with _timer("update_critic", timing_raw):
-                            critic_output = self.critic_wg.update_critic(batch)
+                            critic_output = self.critic_wg.update_critic(batch)  # ⭐ Update the critic model
                         critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
                         metrics.update(critic_output_metrics)
 
@@ -1251,7 +1332,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                         # update actor
                         with _timer("update_actor", timing_raw):
                             batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
-                            actor_output = self.actor_rollout_wg.update_actor(batch)
+                            actor_output = self.actor_rollout_wg.update_actor(batch)  # ⭐ Update the actor with the new batch
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
 
@@ -1281,7 +1362,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                                 scores=scores,
                                 reward_extra_infos_dict=reward_extra_infos_dict,
                                 dump_path=rollout_data_dir,
-                            )
+                            )  # ⭐ Dump the generated experiences and trajectories
 
                             # save original trajectory
                             filename = os.path.join(rollout_data_dir, f"traj_{self.global_steps}.jsonl")
@@ -1293,19 +1374,18 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                             with open(filename,"w") as f:
                                 for task in tasks: # this must be bounded # type: ignore
                                     f.write(task.json() + "\n")
-                            
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer("testing", timing_raw):
-                            val_metrics: dict = self._validate()
+                            val_metrics: dict = self._validate()  # ⭐ Validate the model and collect validation metrics
                             if is_last_step:
                                 last_val_metrics = val_metrics
                         metrics.update(val_metrics)
 
                     if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer("save_checkpoint", timing_raw):
-                            self._save_checkpoint()
+                            self._save_checkpoint()  # ⭐ Save the current state of the model as a checkpoint
 
                 # training metrics
                 metrics.update(
@@ -1324,7 +1404,7 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
 
                 # TODO: make a canonical logger that supports various backend
-                logger.log(data=metrics, step=self.global_steps)
+                logger.log(data=metrics, step=self.global_steps)  # ⭐ Log the collected metrics
 
                 progress_bar.update(1)
                 self.global_steps += 1
@@ -1341,6 +1421,6 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                 print("DEBUG: change ratio of synthetic data from 1 to 0.5")
                 assert isinstance(self.train_dataset._mixture_strategy,UnifiedMixtureStrategy)
                 self.train_dataset._mixture_strategy._synthetic_ratio-=1/5 # initial 1, 0 at about epoch 5 (about step 30)
-            self.train_dataset.update()
+            self.train_dataset.update()  # ⭐ Update the training dataset for the next iteration
 
 

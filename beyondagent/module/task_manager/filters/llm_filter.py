@@ -30,6 +30,16 @@ logger = logging.getLogger(__name__)
 
 class LlmFilter(TaskPostFilter):
     def __init__(self, env_url: str, llm_client: LlmClient, num_threads: int, *, tokenizer, config):
+        """
+        Initializes the LlmFilter with the necessary components for filtering tasks.
+
+        Args:
+            env_url (str): The URL of the environment client.
+            llm_client (LlmClient): The Language Model client used for task validation and rewriting.
+            num_threads (int): The number of threads to use for parallel processing.
+            tokenizer: The tokenizer used for text processing.
+            config: Configuration settings for the filter.
+        """
         self._env_client = EnvClient(env_url)
         self._llm_client = llm_client
         
@@ -39,10 +49,18 @@ class LlmFilter(TaskPostFilter):
         self._config = config
         
         # 用于线程安全的锁（如果需要共享资源访问控制）
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # ⭐ Initialize a lock for thread-safe operations
 
     def filter(self, tasks: Sequence[TaskObjective]) -> list[TaskObjective]:
-        """使用多线程并行过滤任务"""
+        """
+        Filters and processes a sequence of tasks using multi-threading.
+
+        Args:
+            tasks (Sequence[TaskObjective]): The sequence of tasks to be filtered.
+
+        Returns:
+            list[TaskObjective]: The filtered and processed tasks.
+        """
         if not tasks:
             return []
         
@@ -51,7 +69,7 @@ class LlmFilter(TaskPostFilter):
         
         # 方法2: 如果需要更细粒度的控制，可以使用下面的批处理方法
         # return self._filter_with_batches(tasks)
-    
+
     def _filter_with_threadpool(self, tasks: Sequence[TaskObjective]) -> list[TaskObjective]:
         """使用线程池并行处理所有任务"""
         res = []
@@ -79,14 +97,22 @@ class LlmFilter(TaskPostFilter):
         return res
     
     def _filter_with_batches(self, tasks: Sequence[TaskObjective]) -> list[TaskObjective]:
-        """分批处理任务（可选的实现方式）"""
+        """
+        Filters and processes a sequence of tasks in batches using multi-threading.
+
+        Args:
+            tasks (Sequence[TaskObjective]): A sequence of TaskObjective objects to be processed.
+
+        Returns:
+            list[TaskObjective]: A list of TaskObjective objects that passed the filtering criteria.
+        """
         res = []
         tasks_list = list(tasks)
         
-        # 计算批次大小
-        batch_size = max(1, len(tasks_list) // self._num_threads)
+        # Calculate the batch size
+        batch_size = max(1, len(tasks_list) // self._num_threads)  # ⭐ Ensures at least one task per batch and distributes tasks evenly across threads
         
-        # 分批处理
+        # Process tasks in batches
         for i in range(0, len(tasks_list), batch_size):
             batch = tasks_list[i:i + batch_size]
             
@@ -106,9 +132,19 @@ class LlmFilter(TaskPostFilter):
                         continue
         
         return res
-    
+
     def _execute_strategy1(self, task: TaskObjective) -> TaskObjective|None:
-        """Execute strategy 1: Simple execution / 执行策略1：简单执行"""
+        """
+        Executes the first strategy for processing a task. This includes setting up a worker and an agent flow,
+        executing the task, validating the result, and potentially rewriting the task's ground truth if the
+        execution is valid.
+
+        Args:
+            task (TaskObjective): The task to be processed.
+
+        Returns:
+            TaskObjective|None: The updated task if the execution is valid, otherwise None.
+        """
         try:
             worker = EnvWorker(
                 task.task,
@@ -136,8 +172,8 @@ class LlmFilter(TaskPostFilter):
                 },
                 stop=[False], # 这俩玩意有没有什么办法能封装一下
                 system_prompt=make_solver_tip_prompt(task.objective,task.ground_truth)
-            )
-            
+            )  # ⭐ Execute the task using the worker and agent flow
+
             valid=self._validate(task,traj)
             if valid:
                 task=self._rewrite_new_gt(task,traj)
@@ -147,17 +183,26 @@ class LlmFilter(TaskPostFilter):
         except Exception as e:
             logger.exception(f"Error in _execute_strategy1 for task {task}: {e}")
             return None
-        
-        
+
+
     def _validate(self, task: TaskObjective, trajectory: Trajectory) -> bool:
-        """验证任务执行结果"""
+        """
+        Validates the success of a task's execution by evaluating the provided trajectory.
+
+        Args:
+            task (TaskObjective): The task objective to be validated.
+            trajectory (Trajectory): The trajectory of the task execution.
+
+        Returns:
+            bool: True if the task was successfully executed, False otherwise.
+        """
         try:
             validator = TrajectoryEvaluator(self._llm_client)
-            return validator.evaluate_trajectory_success(task, trajectory)
+            return validator.evaluate_trajectory_success(task, trajectory)  # ⭐ Core line that evaluates the success of the task
         except Exception as e:
             logger.exception(f"Error in _validate for task {task}: {e}")
             return False
-    
+
     def _rewrite_new_gt(self,task:TaskObjective,trajectory:Trajectory)->TaskObjective:
         """重写任务新的ground-truth"""
         sys_prompt,user_prompt=get_task_summarize_prompt([trajectory],[task], None)
@@ -171,15 +216,30 @@ class LlmFilter(TaskPostFilter):
         
     
     def _get_llm_chat_fn(self, sampling_params: Optional[dict] = None) -> Callable:
-        """获取LLM聊天函数，线程安全"""
+        """
+        Returns a thread-safe LLM chat function.
+
+        Args:
+            sampling_params (Optional[dict]): Default sampling parameters for the LLM.
+
+        Returns:
+            Callable: A function that can be used to chat with the LLM.
+        """
         def llm_chat(
             messages: list[dict[str, str]],
             custom_sampling_params: Optional[dict] = None,
             request_id: Optional[str] = None,
         ) -> dict:
             """
-            input messages: [{"role": "system", "value": "..."}, {"role": "user", "value": "..."}]
-            output messages: [{"role": "assistant", "value": "..."}]
+            Sends input messages to the LLM and returns the assistant's response.
+
+            Args:
+                messages (list[dict[str, str]]): List of message dictionaries, each containing 'role' and 'value'.
+                custom_sampling_params (Optional[dict]): Custom sampling parameters to override or add to the default ones.
+                request_id (Optional[str]): An optional request ID for tracking.
+
+            Returns:
+                dict: A dictionary containing the assistant's role and content.
             """
             updated_sampling_params = {}
             if sampling_params:
@@ -190,15 +250,15 @@ class LlmFilter(TaskPostFilter):
             input_messages = copy.deepcopy(messages)
             res = None
             
-            # 重试机制
+            # Retry mechanism
             for i in range(3):
                 try:
-                    # 如果 llm_client 不是线程安全的，可以在这里加锁
+                    # If llm_client is not thread-safe, a lock should be added here
                     # with self._lock:
                     res = self._llm_client.chat(
                         messages=input_messages, 
                         sampling_params=updated_sampling_params
-                    )
+                    )  # ⭐ Attempt to get a response from the LLM
                     break
                 except Exception as e:
                     logger.exception(f"llm_chat attempt {i+1} error: {e}")
@@ -224,7 +284,7 @@ class TrajectoryEvaluator:
     def __init__(self, client:LlmClient):
         self.client = client
         self.prompts = EvaluationPrompts()
-    
+
     def evaluate_trajectory_success(self, task:TaskObjective, trajectory:Trajectory) -> bool:
         """Evaluate if trajectory completed the task successfully / 评估轨迹是否成功完成任务"""
         try:
@@ -259,18 +319,34 @@ class TrajectoryEvaluator:
             return False
     
     def _create_trajectory_summary(self, traj: Trajectory) -> str:
-        """Create summary of trajectory steps / 创建轨迹步骤摘要"""
+        """
+        Creates a summary of the steps in a given trajectory, with each step's content truncated to 200 characters.
+
+        Args:
+            traj (Trajectory): The trajectory object containing the steps to be summarized.
+
+        Returns:
+            str: A string summary of the trajectory steps.
+        """
         summary_blocks = []
         
         for i, step in enumerate(traj.steps):
             block=f"(Step {i+1}) {step['role']}:\n"
-            block+=f"{step['content'][:200]}...\n"
+            block+=f"{step['content'][:200]}...\n"  # ⭐ Truncate the content to 200 characters and append an ellipsis
             summary_blocks.append(block)
         
         return "\n".join(summary_blocks)
     
     def _parse_evaluation_response(self, response: str) -> bool:
-        """Parse LLM evaluation response / 解析LLM评估响应"""
+        """
+        Parses the evaluation response from an LLM to determine if the task was successful or not.
+
+        Args:
+            response (str): The response from the LLM.
+
+        Returns:
+            bool: True if the task is deemed successful, False otherwise.
+        """
         if not response:
             return False
         
@@ -290,7 +366,7 @@ class TrajectoryEvaluator:
         failure_count = sum(1 for keyword in failure_keywords if keyword in response_lower)
         
         # Default to success if more success keywords found / 如果找到更多成功关键词则默认成功
-        return success_count > failure_count
+        return success_count > failure_count  # ⭐ Determine success based on the count of success and failure keywords
     
     
 
@@ -299,7 +375,17 @@ class EvaluationPrompts:
     
     def success_evaluation_prompt(self, query: str, trajectory_summary: str,
                                 final_observation: str) -> list:
-        """Prompt for evaluating trajectory success / 评估轨迹成功的提示"""
+        """
+        Generates a prompt for evaluating the success of a trajectory.
+
+        Args:
+            query (str): The task query.
+            trajectory_summary (str): The summary of the trajectory.
+            final_observation (str): The final observation of the trajectory.
+
+        Returns:
+            list: A list containing a single dictionary with the role and content for the prompt.
+        """
 
 # - Expected Outcome (Ground Truth API Call or Result): {ground_truth}
         messages = [

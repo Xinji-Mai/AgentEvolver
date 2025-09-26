@@ -30,8 +30,13 @@ from beyondagent.module.task_manager.rewards import LlmAsJudgeRewardCalculator,L
 from beast_logger import register_logger
 
 def init_logger(experiment_name):
-    """Initialize the logger with the given configuration."""
-    if 'BEST_LOGGER_INIT' in os.environ: return # prevent re-initialization in ray environment
+    """
+    Initializes the logger with the given experiment name and sets up the logging environment.
+
+    Args:
+        experiment_name (str): The name of the experiment for which the logger is being initialized.
+    """
+    if 'BEST_LOGGER_INIT' in os.environ: return  # Prevents re-initialization in ray environment
     os.environ['BEST_LOGGER_INIT'] = '1'
     os.environ['BEST_LOGGER_WEB_SERVICE_URL'] = "http://127.0.0.1:8181/"
     from datetime import datetime
@@ -43,9 +48,22 @@ def init_logger(experiment_name):
 
 
 class ParallelEnvManager(object):
+    """
+    Manages a parallel environment for running multiple tasks, handling retries, logging, and using a language model to generate responses, ultimately returning the trajectories of the tasks.
+    """
     def __init__(self, config: DictConfig, async_rollout_manager: BaAsyncLLMServerManager, max_parallel: int,
                  max_llm_retries: int = 3, **kwargs):
-        init_logger(experiment_name=config.trainer.experiment_name)
+        """
+        Initializes the ParallelEnvManager with the provided configuration and settings.
+
+        Args:
+            config (DictConfig): Configuration dictionary containing all necessary parameters.
+            async_rollout_manager (BaAsyncLLMServerManager): Manager for asynchronous rollouts.
+            max_parallel (int): Maximum number of parallel tasks that can be run.
+            max_llm_retries (int, optional): Maximum number of retries for the language model. Defaults to 3.
+            **kwargs: Additional keyword arguments.
+        """
+        init_logger(experiment_name=config.trainer.experiment_name)  # ⭐ Initializes the logger
         super().__init__(**kwargs)
 
         self.config: DictConfig = config
@@ -66,12 +84,31 @@ class ParallelEnvManager(object):
 
 
     def get_llm_chat_fn(self, sampling_params: dict = None) -> callable:
+        """
+        Returns a callable function for chatting with a language model. The returned function is either
+        `llm_chat` or `llm_chat_remote` based on the `llm_mode` attribute.
+
+        Args:
+            sampling_params (dict, optional): Default sampling parameters for the chat function.
+
+        Returns:
+            callable: A function to chat with the language model.
+        """
+
         def llm_chat(messages: List[Dict[str, str]],
                      custom_sampling_params: dict = None,
                      request_id: str = None) -> dict:
             """
-            input messages: [{"role": "system", "value": "..."}, {"role": "user", "value": "..."}]
-            output messages: [{"role": "assistant", "value": "..."}]
+            Sends messages to the language model and returns the assistant's response. This function handles
+            retries and updates the sampling parameters.
+
+            Args:
+                messages (List[Dict[str, str]]): A list of message dictionaries with "role" and "value" keys.
+                custom_sampling_params (dict, optional): Custom sampling parameters to override the default ones.
+                request_id (str, optional): A unique identifier for the request.
+
+            Returns:
+                dict: The last message in the input messages, which is expected to be the assistant's response.
             """
             # TODO: sending sampling_params to rollout server
             updated_sampling_params = {}
@@ -79,9 +116,8 @@ class ParallelEnvManager(object):
                 updated_sampling_params.update(sampling_params)
             if custom_sampling_params:
                 updated_sampling_params.update(custom_sampling_params)
-            updated_sampling_params.update({"logprobs": 1, "return_tokens_as_token_ids": True})
+            updated_sampling_params.update({"logprobs": 1, "return_tokens_as_token_ids": True})  # ⭐ Update sampling parameters
 
-            # output_messages = []
             input_messages = copy.deepcopy(messages)
             weighted_addresses = self.async_rollout_manager.chat_scheduler.weighted_addresses
             # logger.info(f"weighted_addresses={weighted_addresses}")
@@ -89,7 +125,7 @@ class ParallelEnvManager(object):
                 try:
                     self.async_rollout_manager.submit_chat_completions(messages=input_messages,
                                                                        sampling_params=updated_sampling_params,
-                                                                       request_id=request_id)
+                                                                       request_id=request_id)  # ⭐ Submit chat completions
                     break
 
                 except Exception as e:
@@ -99,24 +135,32 @@ class ParallelEnvManager(object):
             return input_messages[-1]
 
         def llm_chat_remote(messages: List[Dict[str, str]],
-                     custom_sampling_params: dict = None,
-                     request_id: str = None) -> dict:
+                           custom_sampling_params: dict = None,
+                           request_id: str = None) -> dict:
             """
-            input messages: [{"role": "system", "value": "..."}, {"role": "user", "value": "..."}]
-            output messages: [{"role": "assistant", "value": "..."}]
+            Sends messages to the remote language model and returns the assistant's response. This function
+            handles retries and updates the sampling parameters.
+
+            Args:
+                messages (List[Dict[str, str]]): A list of message dictionaries with "role" and "value" keys.
+                custom_sampling_params (dict, optional): Custom sampling parameters to override the default ones.
+                request_id (str, optional): A unique identifier for the request.
+
+            Returns:
+                dict: The last message in the output messages, which is expected to be the assistant's response.
             """
             updated_sampling_params = {}
             if sampling_params:
                 updated_sampling_params.update(sampling_params)
             if custom_sampling_params:
                 updated_sampling_params.update(custom_sampling_params)
-            updated_sampling_params.update({"logprobs": 1, "return_tokens_as_token_ids": True})
+            updated_sampling_params.update({"logprobs": 1, "return_tokens_as_token_ids": True})  # ⭐ Update sampling parameters
             input_messages = copy.deepcopy(messages)
             for i in range(self.max_llm_retries):
                 try:
                     output_message = self.async_rollout_manager.submit_chat_completions(messages=input_messages,
-                                                                       sampling_params=updated_sampling_params,
-                                                                       request_id=request_id)
+                                                                                         sampling_params=updated_sampling_params,
+                                                                                         request_id=request_id)  # ⭐ Submit chat completions
                     break
                 except Exception as e:
                     logger.exception(f"rollout_server.{i} error: {e.args}")
@@ -129,9 +173,16 @@ class ParallelEnvManager(object):
             return llm_chat
 
     def step_status_printer(self, tmux):
-        # 直方数据，tmux 0~10 数量 10~20 数量 20~30 数量 30~40 数量 ……
+        """
+        Prints the current status of the steps in the parallel environment, including the number of threads in different step ranges and the token generation rate.
+
+        Args:
+            tmux (dict): A dictionary containing the 'step' and 'token' information for the current state of the environment.
+        """
+        # Initialize a counter to keep track of the number of threads in each step range
         step_counter = {}
 
+        # Calculate the total tokens and the time elapsed since the last count
         current_token = sum(tmux['token'])
         current_time = time.time()
         delta_token = current_token - self.current_token
@@ -140,7 +191,7 @@ class ParallelEnvManager(object):
         self.current_token_count_time = current_time
         token_gen_per_sec_str = f"{delta_token/delta_time:.2f} tokens/s" if delta_time > 0 else "N/A"
 
-
+        # Categorize the steps into bins and count the number of threads in each bin
         for step in tmux['step']:
             if step == -1:
                 step_counter[(-1, 'terminated')] = step_counter.get((-1, 'terminated'), 0) + 1
@@ -150,9 +201,10 @@ class ParallelEnvManager(object):
                 end = start + 5
                 step_counter[(start, end)] = step_counter.get((start, end), 0) + 1
 
-        # sort by start value (small to large)
-        step_counter = dict(sorted(step_counter.items(), key=lambda x: x[0][0]))
+        # Sort the step counter by the start value of each bin
+        step_counter = dict(sorted(step_counter.items(), key=lambda x: x[0][0]))  # ⭐ Sort the step counter to ensure the output is in ascending order
 
+        # Prepare the print buffer with the formatted step ranges and thread counts
         print_buf = []
         for (start, end), count in step_counter.items():
             if start != -1:
@@ -160,6 +212,8 @@ class ParallelEnvManager(object):
         for (start, end), count in step_counter.items():
             if start == -1:
                 print_buf += [f"[finished]:{count} threads"]
+
+        # Print the rollout progress with the token generation rate and the step ranges
         print(f"Rollout progress ({token_gen_per_sec_str}): " + "  //  ".join(print_buf))
 
 
@@ -167,7 +221,22 @@ class ParallelEnvManager(object):
     def rollout_env_worker(self, task: Task, data_id: str, rollout_id: str, mode: Literal["sample", "validate"],
                            thread_index: int, add_exp: bool, task_train_exp_mode: str, tmux: dict, stop:list, **kwargs) -> Trajectory: # add add_exp & task_train_exp_mode by ANNI
         """
-        Process a single prompt in a thread-safe way.
+        Processes a single task in a thread-safe way, handling retries and exceptions.
+
+        Args:
+            task (Task): The task to be processed.
+            data_id (str): The ID of the data.
+            rollout_id (str): The ID of the rollout.
+            mode (Literal["sample", "validate"]): The mode of operation, either 'sample' or 'validate'.
+            thread_index (int): The index of the thread.
+            add_exp (bool): Whether to add experience.
+            task_train_exp_mode (str): The mode for training experience.
+            tmux (dict): TMUX configuration.
+            stop (list): List of stop conditions.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            Trajectory: The trajectory generated from the task execution.
         """
         max_retry = 4
         for retry in range(max_retry):
@@ -189,14 +258,14 @@ class ParallelEnvManager(object):
                 reward_caculator=grader_manager.get_calculator(task.evaluator, task=task)
                 agent_flow: BaseAgentFlow = AgentFlow(
                     reward_calculator=reward_caculator,
-                    llm_chat_fn=llm_chat_fn, 
-                    tokenizer=self.tokenizer, 
+                    llm_chat_fn=llm_chat_fn,
+                    tokenizer=self.tokenizer,
                     config=self.config,
                     **kwargs
                 )
 
                 env_worker = EnvWorker(task=task, thread_index=thread_index, config=self.config, tokenizer=self.tokenizer)
-                trajectory: Trajectory = env_worker.execute(data_id=data_id, rollout_id=rollout_id, add_exp=add_exp, task_train_exp_mode=task_train_exp_mode, agent_flow=agent_flow, tmux=tmux, stop=stop) # add add_exp & task_train_exp_mode by ANNI
+                trajectory: Trajectory = env_worker.execute(data_id=data_id, rollout_id=rollout_id, add_exp=add_exp, task_train_exp_mode=task_train_exp_mode, agent_flow=agent_flow, tmux=tmux, stop=stop) # ⭐ Execute the task and generate the trajectory
                 return trajectory
 
             except Exception as e:
@@ -209,15 +278,15 @@ class ParallelEnvManager(object):
 
     def rollout(self, tasks: List[Task], mode: Literal["sample", "validate"], epoch: str) -> List[Trajectory]:
         """
-        使用线程池执行rollout任务，并自动重试失败的任务，直到所有任务成功。
+        Executes a list of tasks in a parallel environment using a thread pool, with automatic retries for failed tasks.
 
         Args:
-            tasks: 待处理的任务列表。
-            mode: 模式，'sample' 或 'validate'。
-            epoch: 当前的周期标识，用于日志和进度条。
+            tasks (List[Task]): A list of tasks to be processed.
+            mode (Literal["sample", "validate"]): The mode of operation, either 'sample' or 'validate'.
+            epoch (str): The current epoch identifier, used for logging and progress bar.
 
         Returns:
-            一个包含所有成功任务结果的Trajectory列表，并已排序。
+            List[Trajectory]: A sorted list of Trajectory objects representing the results of the successfully completed tasks.
         """
         traj_cmt_array = []
         #############
@@ -236,13 +305,10 @@ class ParallelEnvManager(object):
         task_train_exp_modes = [
             task.metadata.get("task_train_exp_mode", "keep")
             for task in tasks
-        ]   # len(tasks)个: task_train_exp_mode是query/task-level的
-        
-        
-        # 1. 核心数据结构：使用一个字典来追踪所有“飞行中”的任务
-        #    键是 Future 对象，值是提交该任务所需的完整参数
+        ]   # len(tasks)
+
         future_to_params: Dict[Future, Tuple[Task, str, str, str, int, bool, str, dict, list[bool]]] = {}
-        
+
         tmux = {
             'step': [0 for _ in range(len(tasks) * rollout_n)],
             'token': [0 for _ in range(len(tasks) * rollout_n)],
@@ -272,7 +338,7 @@ class ParallelEnvManager(object):
 
                     try:
                         # 4. 健壮的结果获取与错误处理
-                        result = future.result()
+                        result = future.result()  # ⭐ Retrieve the result from the completed future
 
                         # 处理“软失败”（worker内部捕获错误并返回特殊标记）
                         if 'error' in result.metadata:
@@ -306,7 +372,7 @@ class ParallelEnvManager(object):
         task_success_rate = np.mean([cmt.reward.success_rate for cmt in traj_cmt_array])
         for cmt in traj_cmt_array:
             cmt.current_batch_success_rate = np.mean(task_success_rate)
-        
+
         # keep trajectory sorted
         traj_cmt_array = sorted(traj_cmt_array, key=lambda x: (int(x.data_id), int(x.rollout_id)))
         return traj_cmt_array
@@ -316,46 +382,81 @@ class ParallelEnvManager(object):
     # ANNI 0825
     @staticmethod
     def extract_and_discard_experience(input_string, experience_template):  # <EXP>{}</EXP>
-        pattern = re.escape(experience_template).replace(r'\{\}', '(.*?)')
+        """
+        Extracts the experience part from the input string using a given template and removes it, returning both the extracted experience and the remaining prompt.
+
+        Args:
+            input_string (str): The string from which to extract the experience.
+            experience_template (str): The template used to identify the experience in the input string. It should contain '{}' as a placeholder for the experience.
+
+        Returns:
+            tuple: A tuple containing the extracted experience and the remaining prompt after removing the experience. If no match is found, returns ("", input_string).
+        """
+        pattern = re.escape(experience_template).replace(r'\{\}', '(.*?)')  # ⭐ Escape the template and replace '{}' with a regex group to capture the experience
         match = re.search(pattern, input_string)
         if match:
-            experience = match.group(1)
-            prompt = re.sub(pattern, '', input_string)
+            experience = match.group(1)  # ⭐ Extract the experience from the matched group
+            prompt = re.sub(pattern, '', input_string)  # ⭐ Remove the experience from the input string to get the remaining prompt
             return experience, prompt
         else:
             return "", input_string
 
     # TODO: define an extra class for trajectory-dataproto converting.
     def to_dataproto(self, cmt_array) -> DataProto:
-        """Convert trajectories to DataProto"""
+        """
+        Converts a list of trajectories into a DataProto object.
+
+        Args:
+            cmt_array (list): A list of trajectories that need to be converted.
+
+        Returns:
+            DataProto: The resulting DataProto object after conversion.
+        """
         # Step 1: Convert trajectories to samples: tokenizing
-        samples = self.trajectories_to_samples(cmt_array)
+        samples = self.trajectories_to_samples(cmt_array)  # ⭐ Tokenize the trajectories to create samples
 
         # Step 2: Convert samples to DataProto: padding
-        dataproto = self.samples_to_dataproto(samples)
+        dataproto = self.samples_to_dataproto(samples)  # ⭐ Pad the samples and convert them to DataProto
 
         return dataproto
 
 
     def get_extra(self, cmt):
+        """
+        Extracts and returns extra information from the comment's metadata.
+
+        Args:
+            cmt (object): The comment object containing metadata.
+
+        Returns:
+            dict: A dictionary with keys 'add_exp', 'task_train_expmode', and 'experience' corresponding to their respective values in the comment's metadata.
+        """
         extras = {
-            "add_exp": cmt.metadata.get("add_exp", None),
-            "task_train_expmode": cmt.metadata.get("task_train_exp_mode", None),
-            "experience": cmt.metadata.get("experience", [])
+            "add_exp": cmt.metadata.get("add_exp", None),  # ⭐ Retrieves the 'add_exp' value from metadata
+            "task_train_expmode": cmt.metadata.get("task_train_exp_mode", None),  # ⭐ Retrieves the 'task_train_exp_mode' value from metadata
+            "experience": cmt.metadata.get("experience", [])  # ⭐ Retrieves the 'experience' list from metadata
         }
         return extras
 
 
     def trajectories_to_samples(self, cmt_array: List) -> List[Sample]:
-        """Convert trajectories to samples"""
-        # step 1: convertion
+        """
+        Converts a list of trajectories into a list of samples, ensuring the number of samples is divisible by the total number of GPUs across all nodes.
+
+        Args:
+            cmt_array (List): A list of trajectories to be converted into samples.
+
+        Returns:
+            List[Sample]: A list of samples with extras added and adjusted to be divisible by the world size.
+        """
+        # Step 1: Conversion
         sample_arr_final = []
         for cmt in cmt_array:
             extras = self.get_extra(cmt)
-            # cc: 新 env 返回两条数据会被标记为 initializatio，然后被排除在训练外
-            sample_arr = cmt.group_tokenize()
+            # cc: message returned by the new env will be tagged as initialization, with no loss-mask
+            sample_arr = cmt.group_tokenize()  # ⭐ Tokenize the trajectory into samples
             for sample in sample_arr:
-                sample.extras = extras
+                sample.extras = extras  # ⭐ Add extra information to each sample
             sample_arr_final += sample_arr
 
         # Step 2: Calculate how many samples need to be removed
@@ -367,15 +468,24 @@ class ParallelEnvManager(object):
             # Sort in reverse order to avoid index shifting during removal
             remove_indices.sort(reverse=True)
             for idx in remove_indices:
-                sample_arr_final.pop(idx)
+                sample_arr_final.pop(idx)  # ⭐ Remove samples to make the total number divisible by world size
 
-        # random remove some samples, so that the number of samples is divisible by 8
+        # Randomly remove some samples, so that the number of samples is divisible by 8
         return sample_arr_final
 
     def samples_to_dataproto(self, samples: list[Sample]) -> DataProto:
+        """
+        Converts a list of Sample objects into a DataProto object, batching and padding the data.
+
+        Args:
+            samples (list[Sample]): A list of Sample objects to be converted.
+
+        Returns:
+            DataProto: A DataProto object containing the batched and padded data.
+        """
         # Initialize lists to store batched data
         step_ids_list  = []
-        steps_texts_list = []           
+        steps_texts_list = []
         prompt_ids, response_ids = [], []
         prompt_attention_mask, response_attention_mask = [], []
         prompt_position_ids, response_position_ids = [], []
@@ -410,17 +520,15 @@ class ParallelEnvManager(object):
 
             # ------------- shuchang 0714: append step_ids and steps_texts ------------
             resp_ids = sample.response_ids
-            # shuchang: 0809
-            # FIXME: 解决stepid对不齐的问题，使用统一的step解析函数parse_response_ids_to_steps 
             resp_ids = sample.response_ids
-            parse_result = parse_response_ids_to_steps(resp_ids, self.tokenizer)
+            parse_result = parse_response_ids_to_steps(resp_ids, self.tokenizer)  # ⭐ Parse the response IDs into step IDs and texts
             step_ids_list.append(torch.tensor(parse_result.step_ids, dtype=torch.long))
             # 生成steps结构（用于语义评估）
             steps_texts_list.append([
-                {"action": s["action_text"], "observation": s["observation_text"]} 
+                {"action": s["action_text"], "observation": s["observation_text"]}
                 for s in parse_result.steps
             ])
-            
+
             # Append tensors to respective lists
             assert len(sample.prompt_ids) != 0
             assert len(sample.response_ids) != 0
@@ -462,9 +570,9 @@ class ParallelEnvManager(object):
         )
         step_ids_pad = pad_sequence_to_length(
             step_ids_pad, self.config.data.max_response_length, -1
-        )
+        )  # ⭐ Pad step IDs to the maximum response length
         # ------------- shuchang 0714: pad step_ids and steps_texts ------------
-    
+
 
         prompt_ids =            pad_sequence(prompt_ids, batch_first=True, padding_value=self.pad_token_id, padding_side="left")
         prompt_attention_mask = pad_sequence(prompt_attention_mask, batch_first=True, padding_value=0, padding_side="left")
@@ -483,23 +591,23 @@ class ParallelEnvManager(object):
         response_loss_mask =      pad_sequence(response_loss_mask, batch_first=True, padding_value=0)
         response_exp_mask_list =  pad_sequence(response_exp_mask_list, batch_first=True, padding_value=0, padding_side="left")
 
-        response_ids =            pad_sequence_to_length(response_ids, max_response_length_this_batch, self.pad_token_id)
-        response_attention_mask = pad_sequence_to_length(response_attention_mask, max_response_length_this_batch, 0)
-        response_loss_mask =      pad_sequence_to_length(response_loss_mask, max_response_length_this_batch, 0)
-        response_exp_mask_list =  pad_sequence_to_length(response_exp_mask_list, max_prompt_length_this_batch, 0, left_pad=True)
+        response_ids =            pad_sequence_to_length(response_ids, max_response_length_this_batch, self.pad_token_id)  # ⭐ Pad response IDs to the maximum response length
+        response_attention_mask = pad_sequence_to_length(response_attention_mask, max_response_length_this_batch, 0)  # ⭐ Pad response attention mask to the maximum response length
+        response_loss_mask =      pad_sequence_to_length(response_loss_mask, max_response_length_this_batch, 0)  # ⭐ Pad response loss mask to the maximum response length
+        response_exp_mask_list =  pad_sequence_to_length(response_exp_mask_list, max_prompt_length_this_batch, 0, left_pad=True)  # ⭐ Pad response experience mask list to the maximum prompt length
 
         delta_position_id = torch.arange(1, response_ids.size(1) + 1, device=response_ids.device).unsqueeze(0).repeat(len(samples), 1)
-        response_position_ids = prompt_position_ids[:, -1:] + delta_position_id
+        response_position_ids = prompt_position_ids[:, -1:] + delta_position_id  # ⭐ Calculate the position IDs for the response
 
         # Concatenate prompt and response tensors
-        input_ids = torch.cat((prompt_ids, response_ids), dim=-1)
-        attention_mask = torch.cat((prompt_attention_mask, response_attention_mask), dim=-1)
-        position_ids = torch.cat((prompt_position_ids, response_position_ids), dim=-1)
-        loss_mask = torch.cat((prompt_loss_mask, response_loss_mask), dim=-1)
+        input_ids = torch.cat((prompt_ids, response_ids), dim=-1)  # ⭐ Concatenate prompt and response IDs
+        attention_mask = torch.cat((prompt_attention_mask, response_attention_mask), dim=-1)  # ⭐ Concatenate prompt and response attention masks
+        position_ids = torch.cat((prompt_position_ids, response_position_ids), dim=-1)  # ⭐ Concatenate prompt and response position IDs
+        loss_mask = torch.cat((prompt_loss_mask, response_loss_mask), dim=-1)  # ⭐ Concatenate prompt and response loss masks
         # shuchang: construct group_id
-        group_ids = torch.tensor([int(s.data_id) for s in samples], dtype=torch.long)
-				# Validate masks have same shape
-        exp_mask = torch.cat((prompt_exp_mask_list, response_exp_mask_list), dim=-1)
+        group_ids = torch.tensor([int(s.data_id) for s in samples], dtype=torch.long)  # ⭐ Construct group IDs from sample data
+        # Validate masks have same shape
+        exp_mask = torch.cat((prompt_exp_mask_list, response_exp_mask_list), dim=-1)  # ⭐ Concatenate prompt and response experience masks
 
         assert exp_mask.shape == loss_mask.shape, f"Shape mismatch: {exp_mask.shape} vs {loss_mask.shape}"
 
@@ -518,7 +626,6 @@ class ParallelEnvManager(object):
             },
             batch_size=len(samples),
         )
-
 
         return DataProto(
             batch=batch,

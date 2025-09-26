@@ -80,37 +80,69 @@ class OnflyRlDataset(IterableDataset):
         pass
 
     def __iter__(self) -> Iterator:
+        """
+        Returns the iterator object itself.
+
+        Returns:
+            Iterator: The iterator object (self).
+        """
         return self
 
     def __next__(self):
+        """
+        Retrieves the next item from the iterator. This method manages the iteration over multiple datasets,
+        advancing to the next dataset when the current one is exhausted. It also releases used datasets if
+        the `_do_release_used_dataset` flag is set.
+
+        Returns:
+            Any: The next item from the current dataset.
+
+        Raises:
+            StopIteration: If there are no more items to iterate over.
+        """
         if len(self._datasets) <= self._cur_dataset:
-            raise StopIteration
+            raise StopIteration  # ⭐ Raise StopIteration if all datasets have been processed
 
         this_cur = self._cur - self._passed_datasets_cnt
         if this_cur >= len(self._datasets[self._cur_dataset]):
             self._passed_datasets_cnt += len(self._datasets[self._cur_dataset])
             self._cur_dataset += 1
-            this_cur = 0
+            this_cur = 0  # ⭐ Reset the current index for the new dataset
 
         if len(self._datasets) <= self._cur_dataset:
-            raise StopIteration
+            raise StopIteration  # ⭐ Raise StopIteration if all datasets have been processed
 
         # release used datasets
         if self._do_release_used_dataset:
-            self._release_used_dataset()
+            self._release_used_dataset()  # ⭐ Release used datasets if the flag is set
 
-        self._cur += 1
-        return self._datasets[self._cur_dataset][this_cur]
+        self._cur += 1  # ⭐ Increment the global cursor
+        return self._datasets[self._cur_dataset][this_cur]  # ⭐ Return the next item from the current dataset
 
     @property
     def num_rest_data(self) -> int:
-        return sum([len(d) for d in self._datasets[self._cur_dataset :]]) - (
+        """
+        Calculate the number of remaining data points in the datasets.
+
+        Returns:
+            int: The number of remaining data points.
+        """
+        return sum([len(d) for d in self._datasets[self._cur_dataset :]]) - (  # ⭐ Sum the lengths of remaining datasets and adjust for the current position
             self._cur - self._passed_datasets_cnt
         )
 
     def append_dataset(self, dataset: RLHFDataset):
-        self._datasets.append(dataset)
+        """
+        Append a new RLHFDataset to the list of datasets.
+
+        Args:
+            dataset (RLHFDataset): The dataset to be appended.
+        """
+        self._datasets.append(dataset)  # ⭐ Append the new dataset
 
     def _release_used_dataset(self):
-        self._datasets = self._datasets[self._cur_dataset :]
-        self._cur_dataset = 0
+        """
+        Release the used datasets and reset the internal state to start from the first dataset again.
+        """
+        self._datasets = self._datasets[self._cur_dataset :]  # ⭐ Remove the used datasets
+        self._cur_dataset = 0  # ⭐ Reset the current dataset index

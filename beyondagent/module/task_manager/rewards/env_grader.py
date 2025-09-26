@@ -14,7 +14,18 @@ class EnvGrader(RewardCalculator):
         pass
     
     def calculate_reward(self, trajectory: Trajectory, env: EnvClient, instance_id: str) -> GraderResult:
-        score = env.evaluate(instance_id, params={"sparse": True})
+        """
+        Evaluates the provided trajectory in the specified environment and calculates a reward.
+
+        Args:
+            trajectory (Trajectory): The trajectory to be evaluated.
+            env (EnvClient): The environment client used for evaluation.
+            instance_id (str): The ID of the instance being evaluated.
+
+        Returns:
+            GraderResult: A dictionary containing the score and the reason for the result.
+        """
+        score = env.evaluate(instance_id, params={"sparse": True})  # ⭐ Evaluate the trajectory and get the score
         return {
             "score": score,
             "reason": "Env grader gives no reason."

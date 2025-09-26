@@ -40,10 +40,19 @@ class NaiveTaskObjectiveRetrieval(TaskObjectiveRetrieval):
         return self._mp[task.task_id]
 
     def add_objective(self, objective: TaskObjective):
-        if objective.task.task_id not in self._mp:
-            self._mp[objective.task.task_id] = []
+        """
+        Adds a new task objective to the internal mapping. If the task ID does not exist in the mapping, it initializes an empty list for that task ID.
 
-        self._mp[objective.task.task_id].append(objective)
-    
+        Args:
+            objective (TaskObjective): The task objective to be added.
+        """
+        if objective.task.task_id not in self._mp:
+            self._mp[objective.task.task_id] = []  # ⭐ Initialize an empty list for the task ID if it doesn't exist
+
+        self._mp[objective.task.task_id].append(objective)  # ⭐ Add the objective to the list for the task ID
+
     def reset(self):
-        self._mp = {}
+        """
+        Clears the internal mapping, removing all stored task objectives.
+        """
+        self._mp = {}  # ⭐ Clear the internal mapping

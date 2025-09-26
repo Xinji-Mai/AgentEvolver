@@ -6,9 +6,17 @@ from beyondagent.module.task_manager.user_profiles import EnvEntity, EnvEntityOp
 
 # 假设 CRUD 操作
 def get_standard_file_ops():
+    """
+    Returns a list of standard file operations.
+
+    Each operation is represented as an `EnvEntityOpt` object, which includes the operation name and a description.
+
+    Returns:
+        List[EnvEntityOpt]: A list of standard file operations.
+    """
     return [
         EnvEntityOpt("create", "Create a new file or directory."),
-        EnvEntityOpt("read", "Read contents of a file or list directory."),
+        EnvEntityOpt("read", "Read contents of a file or list directory."),  # ⭐ Define the read operation
         EnvEntityOpt("update", "Modify contents or metadata of a file."),
         EnvEntityOpt("delete", "Delete a file or directory."),
         EnvEntityOpt("move_copy", "Move or copy files and directories."),
@@ -17,6 +25,14 @@ def get_standard_file_ops():
     ]
 
 def get_vehicle_ops():
+    """
+    Returns a list of operations that can be performed on a vehicle.
+
+    Each operation is represented as an EnvEntityOpt object, which includes the operation name and a description.
+
+    Returns:
+        list: A list of EnvEntityOpt objects representing the vehicle operations.
+    """
     return [
         EnvEntityOpt("start_engine", "Start the vehicle engine."),
         EnvEntityOpt("stop_engine", "Stop the vehicle engine."),
@@ -24,43 +40,74 @@ def get_vehicle_ops():
         EnvEntityOpt("check_tire_pressure", "Check the tire pressure."),
         EnvEntityOpt("lock_unlock_doors", "Lock or unlock vehicle doors."),
         EnvEntityOpt("set_navigation", "Set the vehicle navigation system."),
-        EnvEntityOpt("check_battery", "Check the vehicle battery status.")
+        EnvEntityOpt("check_battery", "Check the vehicle battery status.")  # ⭐ Defines the last operation in the list
     ]
 
 def get_flight_ops():
+    """
+    Returns a list of flight-related operations as `EnvEntityOpt` objects.
+
+    Each `EnvEntityOpt` object represents a specific operation that can be performed,
+    such as checking flight costs, booking flights, canceling bookings, and purchasing
+    travel insurance.
+
+    Returns:
+        list[EnvEntityOpt]: A list of `EnvEntityOpt` objects, each representing a
+                            different flight-related operation.
+    """
     return [
         EnvEntityOpt("check_flight_cost", "Retrieve flight cost for given route."),
-        EnvEntityOpt("book_flight", "Book a flight ticket."),
+        EnvEntityOpt("book_flight", "Book a flight ticket."),  # ⭐ Define the operation for booking a flight
         EnvEntityOpt("cancel_flight", "Cancel an existing flight booking."),
         EnvEntityOpt("purchase_insurance", "Buy travel insurance for a booking.")
     ]
 
 def get_social_media_ops():
+    """
+    Returns a list of social media operations, each represented as an EnvEntityOpt object.
+
+    Returns:
+        list: A list of EnvEntityOpt objects, each representing a different social media operation.
+    """
     return [
         EnvEntityOpt("post", "Post a new message."),
         EnvEntityOpt("retweet", "Retweet an existing post."),
         EnvEntityOpt("comment", "Comment on a post."),
-        EnvEntityOpt("delete_message", "Delete a sent message."),
-        EnvEntityOpt("view_sent_messages", "List all sent messages.")
+        EnvEntityOpt("delete_message", "Delete a sent message."),  # ⭐ Defines the operation to delete a message
+        EnvEntityOpt("view_sent_messages", "List all sent messages.")  # ⭐ Defines the operation to view all sent messages
     ]
 
 def get_trading_ops():
+    """
+    Returns a list of trading operations, each encapsulated in an EnvEntityOpt object.
+
+    Each EnvEntityOpt object represents a specific trading operation with a name and description.
+
+    Returns:
+        list: A list of EnvEntityOpt objects representing different trading operations.
+    """
     return [
         EnvEntityOpt("get_stock_info", "Retrieve details of a stock."),
         EnvEntityOpt("add_watchlist", "Add a stock to watchlist."),
         EnvEntityOpt("remove_watchlist", "Remove a stock from watchlist."),
         EnvEntityOpt("place_order", "Place a buy or sell order."),
         EnvEntityOpt("cancel_order", "Cancel an existing order."),
-        EnvEntityOpt("get_account_details", "Retrieve account balance and linked cards.")
+        EnvEntityOpt("get_account_details", "Retrieve account balance and linked cards.")  # ⭐ Defines the last operation for getting account details
     ]
 
 def get_support_ops():
+    """
+    Returns a list of operations that can be performed on support tickets.
+
+    Returns:
+        list: A list of EnvEntityOpt objects representing support ticket operations.
+    """
     return [
         EnvEntityOpt("create_ticket", "Create a new support ticket."),
         EnvEntityOpt("update_ticket", "Update ticket details."),
         EnvEntityOpt("close_ticket", "Close a support ticket."),
         EnvEntityOpt("view_ticket", "View details of a support ticket.")
-    ]
+    ]  # ⭐ Defines the list of support ticket operations
 
 # 创建实体
 entities = [

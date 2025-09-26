@@ -103,21 +103,26 @@ class LlmAsJudgeRewardCalculatorWithGT(RewardCalculator):
         
 
     def _calculate_reward(self, trajectory: Trajectory, env:EnvClient, *, eject_llm_output:bool=False):
-        """Calculate reward for a trajectory in specific environment.
-        
+        """
+        Calculates a reward for a given trajectory in a specific environment using an LLM.
+
         Args:
-            trajectory (Trajectory): trajectory to calculate reward
-            env (EnvClient): environment where the trajectory is executed
+            trajectory (Trajectory): The trajectory for which the reward is to be calculated.
+            env (EnvClient): The environment in which the trajectory was executed.
+            eject_llm_output (bool, optional): If True, the function returns both the score and the LLM's full response. Defaults to False.
+
+        Returns:
+            float or tuple: The calculated score, or a tuple of the score and the LLM's full response if `eject_llm_output` is True.
         """
         response=""
         for chunk in self._client.chat_stream_with_retry(messages=self.pack_message(trajectory),max_retries=64):
-            response += chunk
+            response += chunk  # ⭐ Accumulate the response from the LLM
         if response:
             import re
             reward_match = re.search(r'<reward>([\d\.]+)</reward>', response.strip())
             if reward_match:
                 score = float(reward_match.group(1))
-                score = max(0.0, min(100.0, score))/100.0
+                score = max(0.0, min(100.0, score))/100.0  # ⭐ Normalize the score between 0 and 1
             else:
                 print(f"Could not parse score from response: {response}")
                 score=0.0

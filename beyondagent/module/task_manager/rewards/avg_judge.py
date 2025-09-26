@@ -19,18 +19,34 @@ class AvgJudge(RewardCalculator):
         self._judges: list[RewardCalculator] = []
 
     def add_judge(self, x: RewardCalculator):
+        """
+        Adds a new judge to the list of judges.
+
+        Args:
+            x (RewardCalculator): The judge to be added.
+        """
         self._judges.append(x)
 
     def calculate_reward(
         self, trajectory: Trajectory, env: EnvClient, instance_id: str, max_workers: int = 4
     ) -> GraderResult:
-        """并行计算多个 judge 的分数，控制最大线程数"""
+        """
+        Calculates the average reward from all added judges by running them in parallel and averaging their scores.
 
+        Args:
+            trajectory (Trajectory): The trajectory for which the reward is calculated.
+            env (EnvClient): The environment client.
+            instance_id (str): The instance ID.
+            max_workers (int, optional): The maximum number of worker threads. Defaults to 4.
+
+        Returns:
+            GraderResult: The average score and reason.
+        """
         rewards: list[float] = []
 
         def worker(judge: RewardCalculator):
             try:
-                result = judge.calculate_reward(trajectory, env, instance_id)
+                result = judge.calculate_reward(trajectory, env, instance_id)  # ⭐ Calculate the reward for the given trajectory
                 return result["score"]
             except Exception as e:
                 logger.error(f"Judge failed: {e}")
@@ -46,7 +62,7 @@ class AvgJudge(RewardCalculator):
             return {"score": 0.0, "reason": "No valid rewards"}
 
         return {
-            "score": sum(rewards) / len(rewards),
+            "score": sum(rewards) / len(rewards),  # ⭐ Calculate the average score from all judges
             "reason": "AvgJudge (threaded)"
         }
 
@@ -54,22 +70,36 @@ class AvgJudge(RewardCalculator):
 @grader_manager.reg("avg-llm-binary-gt")
 class AvgBinaryGTJudge(AvgJudge):
     def __init__(self, task: Task, n: int = 3):
+        """
+        Initializes the judge with a given task and a specified number of judges.
+
+        Args:
+            task (Task): The task for which the judges will calculate rewards.
+            n (int, optional): The number of judges to add. Defaults to 3.
+        """
         super().__init__(task)
         for i in range(n):
             self.add_judge(
                 LlmAsJudgeBinaryRewardCalculatorWithGT(
                     task, model_name="qwq-plus", use_mean_constraint=True
                 )
-            )
+            )  # ⭐ Adds a judge with a binary reward calculator and a mean constraint
 
 
 @grader_manager.reg("avg-llm")
 class AvgLlmJudge(AvgJudge):
     def __init__(self, task: Task, n: int = 3):
+        """
+        Initializes the judge with a given task and a specified number of judges.
+
+        Args:
+            task (Task): The task for which the judges will calculate rewards.
+            n (int, optional): The number of judges to add. Defaults to 3.
+        """
         super().__init__(task)
         for i in range(n):
             self.add_judge(
                 LlmAsJudgeRewardCalculator(
                     task, model_name="qwq-plus"
                 )
-            )
+            )  # ⭐ Adds a judge with a standard reward calculator

@@ -658,14 +658,6 @@ def _build_decouple(
             combined_rewards.append([])
             continue
 
-        # ⭐ Combine standardized PRM and ORM rewards for each trajectory
-        combined_rewards_i = [alpha * prm + orm for prm, orm in zip(prm_rewards_std[i], [orm_scores_std[i]] * len(prm_rewards_std[i]))]
-        if enable_length_normalization:
-            K = len(combined_rewards_i)
-            combined_rewards_i = [r / math.sqrt(K) for r in combined_rewards_i]
-
-        combined_rewards.append(combined_rewards_i)
-
         prm_std = prm_rewards_std[i]
         orm_std = orm_scores_std[i]
         K = len(prm_std)

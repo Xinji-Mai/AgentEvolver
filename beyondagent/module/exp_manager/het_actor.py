@@ -37,11 +37,25 @@ from verl.workers.actor.dp_actor import DataParallelPPOActor
 
 class HETDataParallelPPOActor(DataParallelPPOActor):
     def __init__(self, **kwargs):
+        """
+        Initializes the HETDataParallelPPOActor with the given keyword arguments.
+
+        Args:
+            **kwargs: Keyword arguments passed to the superclass constructor.
+        """
         super().__init__(**kwargs)
-    
+
     def update_policy(self, data: DataProto):
+        """
+        Updates the policy of the reinforcement learning model using the Proximal Policy Optimization (PPO) algorithm.
+        Handles data in mini-batches and micro-batches, and computes various losses including policy loss, entropy loss,
+        and KL divergence loss.
+
+        Args:
+            data (DataProto): The data containing the necessary information for updating the policy.
+        """
         # make sure we are in training mode
-        self.actor_module.train()
+        self.actor_module.train()  # ⭐ Ensure the actor module is in training mode
 
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         multi_turn = data.meta_info.get("multi_turn", False)
@@ -85,7 +99,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                     # split batch into micro_batches
                     micro_batches = mini_batch.split(self.config.ppo_micro_batch_size_per_gpu)
 
-                self.actor_optimizer.zero_grad()
+                self.actor_optimizer.zero_grad()  # ⭐ Zero the gradients before computing the new ones
 
                 for data in micro_batches:
                     # Support all hardwares
@@ -103,7 +117,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
 
                     old_log_prob = data["old_log_probs"]
                     advantages = data["advantages"]
-                    
+
 
                     clip_ratio = self.config.clip_ratio
                     clip_ratio_low = self.config.clip_ratio_low if self.config.clip_ratio_low is not None else clip_ratio
@@ -116,7 +130,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                     calculate_entropy = False
                     if entropy_coeff != 0:
                         calculate_entropy = True
-                    entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature, calculate_entropy=calculate_entropy)
+                    entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature, calculate_entropy=calculate_entropy)  # ⭐ Forward pass to get entropy and log probabilities
 
                     ##################
                     # ANNI 0814
@@ -135,7 +149,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                         off_cliprange_high=off_cliprange_high,
                         clip_ratio_c=clip_ratio_c,
                         loss_agg_mode=loss_agg_mode,
-                    )
+                    )  # ⭐ Compute on-policy and off-policy losses
                     pg_loss = ret_dict["pg_loss"]
                     pg_losses = ret_dict["pg_losses"]
                     on_pg_losses = ret_dict["on_pg_losses"]
@@ -147,7 +161,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                     ppo_kl = ret_dict["ppo_kl"]
                     ##################
                     if entropy_coeff != 0:
-                        entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+                        entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)  # ⭐ Aggregate entropy loss
 
                         # compute policy loss
                         policy_loss = pg_loss - entropy_loss * entropy_coeff
@@ -157,8 +171,8 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                     if self.config.use_kl_loss:
                         ref_log_prob = data["ref_log_prob"]
                         # compute kl loss
-                        kld = kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)
-                        kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+                        kld = kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)  # ⭐ Compute KL divergence penalty
+                        kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)  # ⭐ Aggregate KL divergence loss
 
                         policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
                         metrics["actor/kl_loss"] = kl_loss.detach().item()
@@ -169,7 +183,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                         loss = policy_loss * (len(data) / self.config.ppo_mini_batch_size)
                     else:
                         loss = policy_loss / self.gradient_accumulation
-                    loss.backward()
+                    loss.backward()  # ⭐ Backpropagate the loss
 
                     ##################
                     # ANNI TODO: add metric

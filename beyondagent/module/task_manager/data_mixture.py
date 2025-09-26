@@ -9,45 +9,45 @@ from loguru import logger
 
 class MixtureStrategy(ABC):
     """数据混合策略接口"""
-    
+
     @abstractmethod
-    def mix_data(self, 
-                 synthetic_objectives: List[TaskObjective], 
+    def mix_data(self,
+                 synthetic_objectives: List[TaskObjective],
                  original_tasks: Sequence[TaskObjective]) -> List[TaskObjective]:
         """
         混合合成数据和原始数据
-        
+
         Args:
             synthetic_objectives: 合成的任务目标列表
             original_tasks: 原始任务列表
-            
+
         Returns:
             混合后的任务目标列表
         """
         pass
-    
+
 
 class UnifiedMixtureStrategy(MixtureStrategy):
     """
     通用混合策略，可以覆盖所有常见的混合场景
-    
+
     Examples:
         # 完全使用原始数据
         UnifiedMixtureStrategy(use_original=True, synthetic_ratio=0)
-        
+
         # 完全使用合成数据
         UnifiedMixtureStrategy(use_original=False, synthetic_ratio=1.0)
-        
+
         # 使用所有原始数据 + 0.5倍数量的合成数据
         UnifiedMixtureStrategy(use_original=True, synthetic_ratio=0.5)
-        
+
         # 不使用原始数据，使用2倍原始数据数量的合成数据
         UnifiedMixtureStrategy(use_original=False, synthetic_ratio=2.0)
-        
+
         # 使用所有原始数据 + 1.5倍数量的合成数据
         UnifiedMixtureStrategy(use_original=True, synthetic_ratio=1.5)
     """
-    
+
     def __init__(self, use_original: bool = True, synthetic_ratio: float = 0.0, shuffle: bool = True, seed: Optional[int] = None):
         """
         Args:
@@ -65,48 +65,63 @@ class UnifiedMixtureStrategy(MixtureStrategy):
         self._synthetic_ratio = synthetic_ratio
         self._shuffle = shuffle
         self._seed = seed
-        
+
         if synthetic_ratio < 0:
             raise ValueError("synthetic_ratio must be non-negative")
-    
-    def mix_data(self, 
-                 synthetic_objectives: List[TaskObjective], 
+
+    def mix_data(self,
+                 synthetic_objectives: List[TaskObjective],
                  original_tasks: Sequence[TaskObjective]) -> List[TaskObjective]:
-        
+        """
+        Mixes synthetic and original task objectives according to the specified strategy.
+
+        Args:
+            synthetic_objectives (List[TaskObjective]): List of synthetic task objectives.
+            original_tasks (Sequence[TaskObjective]): Sequence of original task objectives.
+
+        Returns:
+            List[TaskObjective]: List of mixed task objectives.
+        """
         # 如果指定了种子，创建一个独立的随机状态
-        rng = random.Random(self._seed) if self._seed is not None else random
-        
+        rng = random.Random(self._seed) if self._seed is not None else random  # ⭐ 创建随机数生成器，确保可重复性
+
         mixed_objectives = []
-        
+
         if self._use_original:
-            mixed_objectives.extend(copy.deepcopy(original_tasks))
+            mixed_objectives.extend(copy.deepcopy(original_tasks))  # ⭐ 将原始任务目标添加到混合列表中
             logger.info(f"added {len(mixed_objectives)} original tasks")
         cnt_original_count = len(mixed_objectives)
-        
+
         if self._synthetic_ratio > 0:
             target_synthetic_count = int(len(original_tasks) * self._synthetic_ratio)
-            
+
             if target_synthetic_count > 0:
                 if target_synthetic_count > len(synthetic_objectives):
                     selected_synthetic = synthetic_objectives[:]
                     logger.warning(f"not enough synthetic data: need {target_synthetic_count}, have {len(synthetic_objectives)}, using all available")
                 else:
-                    selected_synthetic = rng.sample(synthetic_objectives, target_synthetic_count)
-                
+                    selected_synthetic = rng.sample(synthetic_objectives, target_synthetic_count)  # ⭐ 从合成任务目标中随机选择指定数量的目标
+
                 mixed_objectives.extend(selected_synthetic)
                 logger.info(f"added {len(selected_synthetic)} synthetic tasks (ratio={self._synthetic_ratio})")
-        
+
         if self._shuffle:
             logger.debug("shuffling data")
             rng.shuffle(mixed_objectives)
 
         synthetic_count = len(mixed_objectives) - cnt_original_count
         logger.info(f"final mixture: {cnt_original_count} original + {synthetic_count} synthetic = {len(mixed_objectives)} total")
-        
+
         return mixed_objectives
-    
+
     def __repr__(self):
-        return f"UnifiedMixtureStrategy(use_original={self._use_original}, synthetic_ratio={self._synthetic_ratio}, shuffle={self._shuffle}, seed={self._seed})"
+        """
+        Returns a string representation of the UnifiedMixtureStrategy instance.
+
+        Returns:
+            str: A string that represents the current state of the instance, including whether it uses original data, the synthetic ratio, shuffling status, and seed.
+        """
+        return f"UnifiedMixtureStrategy(use_original={self._use_original}, synthetic_ratio={self._synthetic_ratio}, shuffle={self._shuffle}, seed={self._seed})"  # ⭐ Generates the string representation
 
 class OriginalOnlyStrategy(UnifiedMixtureStrategy):
     """只使用原始数据的策略（UnifiedMixtureStrategy的别名）"""

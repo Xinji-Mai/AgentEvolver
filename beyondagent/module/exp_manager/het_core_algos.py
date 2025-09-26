@@ -55,6 +55,25 @@ def het_compute_token_on_off_policy_loss(
     clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
 ):
+    """
+    Computes the on-policy and off-policy losses for reinforcement learning using PPO.
+
+    Args:
+        old_log_prob (Tensor): Log probabilities of the actions under the old policy.
+        log_prob (Tensor): Log probabilities of the actions under the new policy.
+        advantages (Tensor): Advantage values for the actions.
+        response_mask (Tensor): Mask indicating which tokens are part of the response.
+        exp_mask (Tensor): Mask indicating which tokens are part of the experience replay.
+        cliprange (float, optional): Clipping range for the policy ratio.
+        cliprange_low (float, optional): Lower bound for the clipping range.
+        cliprange_high (float, optional): Upper bound for the clipping range.
+        off_cliprange_high (float, optional): Upper bound for the off-policy clipping range.
+        clip_ratio_c (float, optional): Constant used in the clipping mechanism.
+        loss_agg_mode (str, optional): Mode for aggregating the losses. Defaults to "token-mean".
+
+    Returns:
+        dict: A dictionary containing various computed losses and metrics.
+    """
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
     ratio = torch.exp(negative_approx_kl)
@@ -76,18 +95,18 @@ def het_compute_token_on_off_policy_loss(
     if cliprange_high is None:
         cliprange_high = cliprange
     on_pg_losses, on_pg_clipfrac, on_pg_clipfrac_lower = compute_pg_losses(cliprange_low, cliprange_high)
-    on_pg_loss = verl_F.masked_mean(on_pg_losses, (1.0 - exp_mask) * response_mask)
+    on_pg_loss = verl_F.masked_mean(on_pg_losses, (1.0 - exp_mask) * response_mask)  # ⭐ Compute the on-policy loss
 
     # Off-policy calculations
     off_cliprange_low = cliprange_low
     off_pg_losses, off_pg_clipfrac, off_pg_clipfrac_lower = compute_pg_losses(off_cliprange_low, off_cliprange_high)
-    off_pg_loss = verl_F.masked_mean(off_pg_losses, exp_mask * response_mask)
+    off_pg_loss = verl_F.masked_mean(off_pg_losses, exp_mask * response_mask)  # ⭐ Compute the off-policy loss
     off_pg_loss = torch.tensor(0.0) if off_pg_loss.isnan().item() else off_pg_loss
 
     # Combine on-policy and off-policy losses
     exp_mask = exp_mask.float()
     pg_losses = off_pg_losses * exp_mask + on_pg_losses * (1.0 - exp_mask)
-    pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+    pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)  # ⭐ Aggregate the combined losses
 
     return {
         "pg_loss": pg_loss,
@@ -115,9 +134,27 @@ def bam_compute_token_on_off_policy_loss(
     clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
 ):
+    """
+    Computes the on-policy and off-policy losses for reinforcement learning.
+
+    Args:
+        old_log_prob (Tensor): Log probabilities of the old policy.
+        log_prob (Tensor): Log probabilities of the current policy.
+        advantages (Tensor): Advantage values.
+        response_mask (Tensor): Mask indicating valid response tokens.
+        exp_mask (Tensor): Mask indicating whether the data is from an off-policy (1) or on-policy (0) source.
+        cliprange (float, optional): Clipping range for PPO. Defaults to None.
+        cliprange_low (float, optional): Lower clipping range for PPO. Defaults to None.
+        cliprange_high (float, optional): Upper clipping range for PPO. Defaults to None.
+        clip_ratio_c (float, optional): Clipping ratio constant. Defaults to 3.0.
+        loss_agg_mode (str, optional): Mode for aggregating the loss. Defaults to "token-mean".
+
+    Returns:
+        dict: A dictionary containing various computed losses and metrics.
+    """
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
-    
+
     # on-policy 不做任何改变
     # off-policy: 分母=1 + reshape + 没有clip
 
@@ -135,13 +172,13 @@ def bam_compute_token_on_off_policy_loss(
     on_pg_losses3 = -advantages * clip_ratio_c
     on_clip_pg_losses2 = torch.min(on_pg_losses3, on_clip_pg_losses1)
     on_pg_clipfrac_lower = verl_F.masked_mean(torch.gt(on_clip_pg_losses1, on_pg_losses3) * (advantages < 0).float(), response_mask)
-    
+
     on_pg_losses = torch.where(advantages < 0, on_clip_pg_losses2, on_clip_pg_losses1)
     on_pg_loss = verl_F.masked_mean(on_pg_losses, (1.0-exp_mask) * response_mask)
 
     # off-policy
     off_ratio = torch.exp(log_prob)     #(bs, response_length)
-    off_ratio = off_ratio / (off_ratio + 0.1)   # reshape from luffy
+    off_ratio = off_ratio / (off_ratio + 0.1)   # ⭐ Reshape the off-policy ratio to stabilize the loss
     off_pg_losses = -advantages * off_ratio
     off_pg_loss = verl_F.masked_mean(off_pg_losses, exp_mask * response_mask)
     if off_pg_loss.isnan().item() is True:
@@ -178,9 +215,27 @@ def bam_compute_token_on_off_policy_loss_v2(
     clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
 ):
+    """
+    Computes the on-policy and off-policy losses for reinforcement learning, using various methods to handle clipping and masking.
+
+    Args:
+        old_log_prob (Tensor): The old log probabilities of the actions.
+        log_prob (Tensor): The new log probabilities of the actions.
+        advantages (Tensor): The advantage values.
+        response_mask (Tensor): A mask indicating which tokens are part of the response.
+        exp_mask (Tensor): A mask indicating whether the data is from an off-policy (1) or on-policy (0) source.
+        cliprange (float, optional): The range for clipping the ratio. Defaults to None.
+        cliprange_low (float, optional): The lower bound for clipping the ratio. Defaults to None.
+        cliprange_high (float, optional): The upper bound for clipping the ratio. Defaults to None.
+        clip_ratio_c (float, optional): The clipping ratio constant. Defaults to 3.0.
+        loss_agg_mode (str, optional): The mode for aggregating the loss. Defaults to "token-mean".
+
+    Returns:
+        dict: A dictionary containing the computed losses and other relevant metrics.
+    """
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
-    
+
     # on-policy 不做任何改变
     # off-policy: 分母=1 + reshape + 没有clip
 
@@ -198,13 +253,13 @@ def bam_compute_token_on_off_policy_loss_v2(
     on_pg_losses3 = -advantages * clip_ratio_c
     on_clip_pg_losses2 = torch.min(on_pg_losses3, on_clip_pg_losses1)
     on_pg_clipfrac_lower = verl_F.masked_mean(torch.gt(on_clip_pg_losses1, on_pg_losses3) * (advantages < 0).float(), response_mask)
-    
+
     on_pg_losses = torch.where(advantages < 0, on_clip_pg_losses2, on_clip_pg_losses1)
     on_pg_loss = verl_F.masked_mean(on_pg_losses, (1.0-exp_mask) * response_mask)
 
     # off-policy
     off_ratio = torch.exp(log_prob)     #(bs, response_length)
-    off_ratio = off_ratio / (off_ratio + 0.1)   # reshape from luffy
+    off_ratio = off_ratio / (off_ratio + 0.1)   # ⭐ Reshape the off-policy ratio
     off_pg_losses = -advantages * off_ratio
     ############
     # ANNI add 0728: 对于A<0的负样本不计算loss梯度，将其loss_mask掉
@@ -218,16 +273,6 @@ def bam_compute_token_on_off_policy_loss_v2(
     pg_losses = adjusted_off_pg_losses * exp_mask + on_pg_losses * (1.0 - exp_mask)
 
     pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
-
-    # off_pg_loss = verl_F.masked_mean(off_pg_losses, exp_mask * response_mask)
-    # if off_pg_loss.isnan().item() is True:
-    #     off_pg_loss = torch.tensor(0.0)
-
-    # exp_mask = exp_mask.float()
-    # pg_losses = off_pg_losses * exp_mask + on_pg_losses * (1.0 - exp_mask)
-
-    # pg_loss = agg_loss(loss_mat=pg_losses, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
-    ############
 
     ret_dict = {
         "pg_loss": pg_loss,
@@ -256,15 +301,32 @@ def bam_compute_token_on_off_policy_loss_v3(
     clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
 ):
+    """
+    Computes the on-policy and off-policy losses for reinforcement learning, using various methods to handle clipping and masking.
+
+    Args:
+        old_log_prob (Tensor): The log probability of the old policy.
+        log_prob (Tensor): The log probability of the new policy.
+        advantages (Tensor): The advantage values.
+        response_mask (Tensor): A mask indicating which tokens are part of the response.
+        exp_mask (Tensor): A mask indicating whether the data is from an off-policy (1) or on-policy (0) source.
+        cliprange (float, optional): The range for clipping the ratio.
+        cliprange_low (float, optional): The lower bound for clipping the ratio.
+        cliprange_high (float, optional): The upper bound for clipping the ratio.
+        clip_ratio_c (float, optional): The constant used for clipping the ratio.
+        loss_agg_mode (str, optional): The mode for aggregating the loss. Default is "token-mean".
+
+    Returns:
+        dict: A dictionary containing the computed losses and other relevant metrics.
+    """
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
-    
-    # 
+
     # on-policy 不做任何改变
     # off-policy: cliphigh=1，其余和on-policy保持一致
 
     # on-policy: 保持不变
-    ratio = torch.exp(negative_approx_kl)   # (bs, response_length)
+    ratio = torch.exp(negative_approx_kl)   # (bs, response_length) ⭐ Compute the ratio of new to old policy probabilities
     on_pg_losses1 = -advantages * ratio
     if cliprange_low is None:
         cliprange_low = cliprange
@@ -277,7 +339,7 @@ def bam_compute_token_on_off_policy_loss_v3(
     on_pg_losses3 = -advantages * clip_ratio_c
     on_clip_pg_losses2 = torch.min(on_pg_losses3, on_clip_pg_losses1)
     on_pg_clipfrac_lower = verl_F.masked_mean(torch.gt(on_clip_pg_losses1, on_pg_losses3) * (advantages < 0).float(), response_mask)
-    
+
     on_pg_losses = torch.where(advantages < 0, on_clip_pg_losses2, on_clip_pg_losses1)
     on_pg_loss = verl_F.masked_mean(on_pg_losses, (1.0-exp_mask) * response_mask)
 

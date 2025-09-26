@@ -10,15 +10,24 @@ __all__= [
 
 @hydra.main(config_path="../../../config", config_name="beyond_agent_dataflow", version_base=None)
 def run_task_manager(config):
+    """
+    Initializes and runs the task manager with the provided configuration.
+
+    Args:
+        config (DictConfig): The configuration for the task manager, loaded by Hydra.
+
+    Returns:
+        None
+    """
     from beyondagent.client.llm_client import DashScopeClient
     from beyondagent.module.task_manager.data_mixture import UnifiedMixtureStrategy
     from verl.utils.fs import copy_to_local
     from verl.utils.tokenizer import hf_tokenizer
     from beyondagent.client.env_client import EnvClient
-    local_path = copy_to_local(config.actor_rollout_ref.model.path, use_shm=config.actor_rollout_ref.model.get('use_shm', False))
+    local_path = copy_to_local(config.actor_rollout_ref.model.path, use_shm=config.actor_rollout_ref.model.get('use_shm', False))  # ⭐ Copy the model to a local path
     
-    llm_client=DashScopeClient(model_name=config.task_manager.llm_client)
-    tokenizer = hf_tokenizer(local_path, trust_remote_code=True)
+    llm_client=DashScopeClient(model_name=config.task_manager.llm_client)  # ⭐ Initialize the LLM client
+    tokenizer = hf_tokenizer(local_path, trust_remote_code=True)  # ⭐ Initialize the tokenizer
     ta=TaskManager(
         config=config,
         exploration_strategy=config.task_manager.strategy,
@@ -36,11 +45,11 @@ def run_task_manager(config):
         env_service_url=config.env_service.env_url,
         num_explore_threads=config.task_manager.num_explore_threads,
         n=config.task_manager.n,
-    )
-    env_client=EnvClient(config.env_service.env_url)
-    seed_tasks=ta.load_tasks_from_environment(env_client,env_type=config.env_service.env_type,split="train")
+    )  # ⭐ Initialize the TaskManager
+    env_client=EnvClient(config.env_service.env_url)  # ⭐ Initialize the environment client
+    seed_tasks=ta.load_tasks_from_environment(env_client,env_type=config.env_service.env_type,split="train")  # ⭐ Load seed tasks from the environment
     print("#seed_tasks: ",seed_tasks)
-    generated=ta.generate_task(ta._tasks,show_progress=True)
+    generated=ta.generate_task(ta._tasks,show_progress=True)  # ⭐ Generate new tasks
     print(len(generated))
 
 if __name__=="__main__":

@@ -44,5 +44,5 @@ user_profile = UserProfile(
     task=user_pref
 )
 
-user_profile.reg_entity(product_entity)
-user_profile.save_to_json("user_profile.json")
+user_profile.reg_entity(product_entity)  # ⭐ Register the product entity to the user profile
+user_profile.save_to_json("user_profile.json")  # ⭐ Save the user profile to a JSON file

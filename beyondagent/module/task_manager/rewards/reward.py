@@ -57,9 +57,18 @@ First provide your detailed reasoning analysis, then output an integer score bet
 
 
 def steps_to_msg(steps: list[dict[str, Any]]) -> str:
+    """
+    Converts a list of step dictionaries into a formatted string representing the conversation trajectory.
+
+    Args:
+        steps (list[dict[str, Any]]): A list of dictionaries, where each dictionary represents a step in the conversation trajectory.
+
+    Returns:
+        str: A formatted string representing the conversation trajectory.
+    """
     # 添加轨迹消息（将所有对话转换为一个连贯的文本）
     trajectory_text = ""
-    assert steps[0]['role'] == 'assistant'
+    assert steps[0]['role'] == 'assistant'  # ⭐ Ensures the first message is from the assistant
     for i, msg in enumerate(steps):
         role = msg.get("role", "unknown")
         if role == 'assistant':
@@ -74,7 +83,7 @@ def steps_to_msg(steps: list[dict[str, Any]]) -> str:
 <|END|>
 """
         else:
-            raise ValueError("roles in trajectory must be assistant or user")
+            raise ValueError("roles in trajectory must be assistant or user")  # ⭐ Raises an error if the role is neither 'assistant' nor 'user'
         trajectory_text += block.strip() + "\n\n"
     return trajectory_text
 
@@ -86,9 +95,16 @@ class LlmAsJudgeRewardCalculator(RewardCalculator):
     TODO: This is a temperary solution for synthetic data.
     """
     def __init__(self,task:Task, model_name='qwen3-235b-a22b-instruct-2507'):
+        """
+        Initializes the LlmAsJudgeRewardCalculator with a specific task and model name.
+
+        Args:
+            task (Task): The task to be evaluated.
+            model_name (str, optional): The name of the language model to be used as the judge. Defaults to 'qwen3-235b-a22b-instruct-2507'.
+        """
         super().__init__(task)
-        self._client=DashScopeClient(model_name=model_name)
-    
+        self._client=DashScopeClient(model_name=model_name)  # ⭐ Initializes the LLM client with the specified model name
+
     def pack_message(self, trajectory: Trajectory):
         """Pack trajectory into a message.
         
@@ -117,21 +133,26 @@ class LlmAsJudgeRewardCalculator(RewardCalculator):
         
 
     def _calculate_reward(self, trajectory: Trajectory, env:EnvClient, *, eject_llm_output:bool=False):
-        """Calculate reward for a trajectory in specific environment.
-        
+        """
+        Calculates a reward for a given trajectory in a specific environment using an LLM.
+
         Args:
-            trajectory (Trajectory): trajectory to calculate reward
-            env (EnvClient): environment where the trajectory is executed
+            trajectory (Trajectory): The trajectory for which the reward is calculated.
+            env (EnvClient): The environment where the trajectory is executed.
+            eject_llm_output (bool, optional): If True, the function returns both the score and the LLM's full response. Defaults to False.
+
+        Returns:
+            float or tuple: The normalized score, or a tuple of the score and the LLM's full response if `eject_llm_output` is True.
         """
         response=""
         for chunk in self._client.chat_stream_with_retry(messages=self.pack_message(trajectory),max_retries=64):
-            response += chunk
+            response += chunk  # ⭐ Accumulate chunks of the LLM's response
         if response:
             import re
             reward_match = re.search(r'<reward>([\d\.]+)</reward>', response.strip())
             if reward_match:
                 score = float(reward_match.group(1))
-                score = max(0.0, min(100.0, score))/100.0
+                score = max(0.0, min(100.0, score))/100.0  # ⭐ Normalize the extracted score
             else:
                 print(f"Could not parse score from response: {response}")
                 score=0.0
