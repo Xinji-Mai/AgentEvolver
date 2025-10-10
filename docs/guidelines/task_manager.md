@@ -99,7 +99,16 @@ By default, Task Manager provides:
 These can be configured in the YAML configuration file:
 
 ```yaml
-# TODO
+task_manager:
+  mixture:
+    # Whether to use original tasks provided by the environment
+    use_original_tasks: True
+    # Ratio of original tasks and synthetic tasks
+    original_data_ratio: 1.0
+    synthetic_data_ratio: 0.0
+    # Whether to shuffle tasks *after* mixture
+    shuffle: True
+
 # Mixture strategy is only active in integrated mode.
 ```
 
@@ -131,11 +140,17 @@ In most workflows, Task Manager is integrated with AgentEvolver. Launching Agent
 
 ### 5. Check the Data
 
-The generated synthetic tasks are stored in:
+The generated synthetic tasks are stored in the path specified in the YAML configuration file.
 
-```text
-# TODO
+```yaml
+task_manager:
+  # where to save the generated tasks
+  train_data_path: tasks_explored.train.json # tasks will be explored once if set. use it if you want to keep the same explorations.
+  val_data_path: tasks_explored.val.json # tasks will be explored once if set. use it if you want to keep the same explorations.
 ```
+
+!!! note "Dynamic vs Static"
+    `train_data_path` and `val_data_path` set, tasks will be explored once and saved to the specified path. If no path is set for integrated mode, Task Manager will generate un tasks dynamically during training. All synthetic tasks will be discarded after training.
 
 Inspect the generated data to ensure it aligns with your training requirements.
 
@@ -273,12 +288,64 @@ A minimal working example:
   }
 }
 ```
+For examples in real environments, please refer to `cookbook` in the root directory.
 
-If Python is preferred, refer to examples in the package:
+If Python is preferred, an example is
 
-```text
-# TODO
+```python
+from beyondagent.module.task_manager.env_profiles import EnvEntity, EnvEntityOpt, TaskPreference, EnvProfile
+
+spotify = EnvEntity(
+    name="Spotify",
+    description="A music streaming service with song, album, and playlist management.",
+    attrs={
+        "Song Library": "Songs saved by the user.",
+        "Album Library": "Albums saved by the user.",
+        "Playlists": "User-created or followed playlists."
+    },
+    opts=[
+        EnvEntityOpt("play_song", "Play a song, album, or playlist."),
+        EnvEntityOpt("like_song", "Like songs or albums."),
+        EnvEntityOpt("unfollow_artist", "Unfollow an artist."),
+        EnvEntityOpt("follow_artist", "Follow an artist."),
+        EnvEntityOpt("create_playlist", "Create a new playlist."),
+        EnvEntityOpt("remove_song", "Remove songs from library or playlist."),
+        EnvEntityOpt("export_library", "Export song/album/playlist data.")
+    ]
+)
+
+gmail = EnvEntity(
+    name="Gmail",
+    description="An email service for sending, receiving, labeling, and managing emails.",
+    attrs={
+        "Inbox": "List of received email threads.",
+        "Outbox": "List of sent email threads.",
+        "Labels": "Custom labels to organize emails."
+    },
+    opts=[
+        EnvEntityOpt("send_email", "Send an email."),
+        EnvEntityOpt("forward_email", "Forward an email."),
+        EnvEntityOpt("reply_email", "Reply to an email."),
+        EnvEntityOpt("delete_email", "Delete emails."),
+        EnvEntityOpt("label_email", "Label emails."),
+        EnvEntityOpt("star_email", "Star or unstar email threads.")
+    ]
+)
+
+env_profile = EnvProfile(
+    name="Bob",
+    background="A general computer user.",
+    task=TaskPreference(
+        num_entities=2,
+        num_opts=3,
+        relation_difficulty=3,
+    )
+)
+
+env_profile.reg_entities([spotify, gmail])
 ```
+
+More examples can be found in `beyondagent/module/task_manager/prelude_profiles`.
 
 ## Task Derivation
 
@@ -366,14 +433,8 @@ task_manager:
 
 ## Extend Task Manager
 
-Task Manager is designed as a **modular and extensible framework**, adaptable to different training scenarios.
+Task Manager is designed as a **modular and extensible framework**, adaptable to different training scenarios. To extend Task Manager, users can implement and replace the components used in three stages in the pipeline, including **Strategy**, **Filter**, **Mixture Strategy**, and **Judge**.
 
-Extension points:
-
-* **Environment Profiling** – Define new entities, attributes, or operations, and adjust granularity.
-* **Task Derivation** – Implement new exploration or synthesis strategies.
-* **Task Curation** – Introduce custom filters or mixture strategies.
-* **Reward Functions** – Replace or augment the default synthetic reward.
 
 ```text
 # TODO: Refactoring in progress
