@@ -907,7 +907,8 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                 tasks = [Task(
                             task_id=test_gen_batch.non_tensor_batch["extras"][i]["task_id"],
                             query=test_gen_batch.non_tensor_batch["extras"][i]['new_query'],
-                            env_type=self.config.env_service.env_type
+                            env_type=self.config.env_service.env_type,
+                            # open_query=test_gen_batch.non_tensor_batch["extras"][i]['open_query'], # avoid potential bugs
                             # evaluator=gen_batch.non_tensor_batch['extras'][i]['evaluator'], # avoid potential bugs
                          ) for i in range(len(test_gen_batch))]
                 print("=" * 10 + "start validate rollout" + "=" * 10)
@@ -1108,19 +1109,13 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
                                         task_id=gen_batch.non_tensor_batch["extras"][i]["task_id"],
                                         query=gen_batch.non_tensor_batch["extras"][i]['new_query'],
                                         env_type=self.config.env_service.env_type,
+                                        open_query=gen_batch.non_tensor_batch["extras"][i]['open_query'],
                                         evaluator=gen_batch.non_tensor_batch['extras'][i]['evaluator'],
                                         ground_truth=gen_batch.non_tensor_batch['extras'][i]['ground_truth'],
                                         metadata={"task_train_exp_mode": mode}
                                     ) for i, mode in enumerate(task_train_exp_modes)
                             ]
                             assert len(task_train_exp_modes)==len(gen_batch), "{len(task_train_exp_modes)=}, {len(gen_batch)=}"
-                            # tasks = [Task(
-                            #             task_id=gen_batch.non_tensor_batch["extras"][i]["task_id"],
-                            #             query=gen_batch.non_tensor_batch["extras"][i]['new_query'],
-                            #             env_type=self.config.env_service.env_type,
-                            #             evaluator=gen_batch.non_tensor_batch['extras'][i]['evaluator'],
-                            #         ) for i in range(len(gen_batch))]
-                            #############
 
                             # TODO enable tracing by jinli 0619
                             print("=" * 10 + "start fit rollout" + "=" * 10)

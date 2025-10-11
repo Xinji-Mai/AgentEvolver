@@ -263,21 +263,8 @@ class ParallelEnvManager(object):
                     config=self.config,
                     **kwargs
                 )
-                
-                # detect whether agent is solving an open world task that having no clear stop condition
-                if mode == "validate":
-                    is_open_query = False
-                else:
-                    # TODO: a better way to detect the type of task (openworld or not).
-                    # All original tasks are closed, and all synthetic tasks are open.
-                    if 'env' in task.evaluator:
-                        is_open_query = False
-                    elif 'llm' in task.evaluator:
-                        is_open_query = True
-                    else:
-                        raise ValueError("failed to detect the type of task")
 
-                env_worker = EnvWorker(task=task, is_open_query=is_open_query, thread_index=thread_index, config=self.config, tokenizer=self.tokenizer)
+                env_worker = EnvWorker(task=task, thread_index=thread_index, config=self.config, tokenizer=self.tokenizer)
                 trajectory: Trajectory = env_worker.execute(data_id=data_id, rollout_id=rollout_id, add_exp=add_exp, task_train_exp_mode=task_train_exp_mode, agent_flow=agent_flow, tmux=tmux, stop=stop) # ⭐ Execute the task and generate the trajectory
                 return trajectory
 

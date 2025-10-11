@@ -16,7 +16,7 @@ from typing import List, Dict, Any, Optional
 
 class EnvWorker(object):
 
-    def __init__(self, task: Task, is_open_query: bool = False, instance_id: str = None, thread_index: int = None, tokenizer=None,
+    def __init__(self, task: Task, instance_id: str = None, thread_index: int = None, tokenizer=None,
                  config: DictConfig = None):
         """
         Initializes the EnvWorker with the provided task, configuration, and other optional parameters.
@@ -30,7 +30,7 @@ class EnvWorker(object):
         """
         self.config = config  # Store the provided configuration
         self.env = EnvClient(base_url=config.env_service.env_url)  # Initialize the environment client
-        self.is_open_query=is_open_query
+        self.is_open_query = task.open_query # open query has no clear stop conditions, so we allow agent to decide when to stop.
         self.task = task  # Store the task object
         self.env_type: str = task.env_type  # Set the environment type based on the task
         self.task_id: str = task.task_id  # Set the task ID
