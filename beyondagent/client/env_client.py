@@ -18,6 +18,7 @@ class EnvClient:
         instance_id: str = None,
         messages: Dict[str, Any] = None,
         params: Dict[str, Any] = None,
+        **kwargs,
     ) -> Dict:
         """
         Handles making a POST request to the specified API endpoint.
@@ -40,6 +41,7 @@ class EnvClient:
             "instance_id": instance_id,
             "messages": messages or {},
             "params": params or {},
+            **kwargs,
         }
         try:
             response = requests.post(url, json=data, timeout=self.timeout)  # ⭐ Sends the POST request
@@ -168,6 +170,8 @@ class EnvClient:
         """
         response = self._make_request(endpoint="release", instance_id=instance_id)  # ⭐ Send the release request
         return response["success"]
+
+
 def main():
     """
     Demonstrates the use of EnvClient by performing a sequence of operations:

@@ -269,11 +269,10 @@ class BfclEnv(BaseEnv):
         # function_docs = func_doc_language_specific_pre_processing(functions, test_category)
         # system_prompt = system_prompt_template.format(functions=function_docs)
         tool_prompt = tools_schema_to_qwen_prompt(tools)
-        terminate_prompt = "# Terminate\nYou may terminate the conversation at any time by saying '/terminate'."
         return {
             # system_prompt + "\n\n" + first_query
             "state": [
-                {"role": "system", "content": tool_prompt + "\n\n" + terminate_prompt},
+                {"role": "system", "content": tool_prompt},
                 {"role": "user", "content": first_query}
                 ],
             "info": {
@@ -291,12 +290,14 @@ class BfclEnv(BaseEnv):
         # action: {'content': '<think>\n\n</think>\n\n', 'role': 'assistant', 'tool_calls': [{'id': 'chatcmpl-tool-xxx', 'function': {'arguments': '{..}', 'name': '...'}, 'type': 'function'},{...}]
         ### change by czy0712
         # action_msg = ActionMessage(**action)
+        cur_turn=self.current_turn
         state_msg = self.transition(action, params=params or {}) # change by czy0712
         # state_msg: role=<Role.USER: 'user'> content='' reasoning_content='' tool_calls=[ToolCall(...)] timestamp='2025-xxx' metadata={} tool_call_id=''
         terminated = self._is_terminated(state_msg.simple_dict["content"]) # change by czy0721
-        # check termination by agent
-        if '/terminate' in state_msg.simple_dict["content"]:
-            terminated = True
+        # if new query is ready to be sent but single_turn is True
+        if cur_turn!=self.current_turn and (self.params.get('is_open_query',False)==True):
+            # terminate the trajectory
+            terminated=True
         reward = self.evaluate(params={"sparse": True}) if terminated else 0.0
         # print('state_msg.simple_dict',state_msg.simple_dict)
         return {

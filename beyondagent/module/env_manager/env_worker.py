@@ -30,6 +30,7 @@ class EnvWorker(object):
         """
         self.config = config  # Store the provided configuration
         self.env = EnvClient(base_url=config.env_service.env_url)  # Initialize the environment client
+        self.is_open_query = task.open_query # open query has no clear stop conditions, so we allow agent to decide when to stop.
         self.task = task  # Store the task object
         self.env_type: str = task.env_type  # Set the environment type based on the task
         self.task_id: str = task.task_id  # Set the task ID
@@ -59,7 +60,8 @@ class EnvWorker(object):
         try:
             init_response = self.env.create_instance(env_type=self.env_type,
                                                     task_id=self.task_id,
-                                                    instance_id=self.instance_id)
+                                                    instance_id=self.instance_id,
+                                                    params={'is_open_query': self.is_open_query})
 
             init_messages: list[dict] = init_response["state"]
             assert isinstance(init_messages, list) and len(init_messages)==2, "init_messages must be list and its length must be 2"

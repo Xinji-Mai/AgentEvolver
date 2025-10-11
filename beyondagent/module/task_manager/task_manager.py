@@ -144,7 +144,7 @@ class TaskManager(object):
         """
         try:
             response = env.get_env_profile(env_type, split, params)
-            self._tasks.extend([Task(task_id=str(x),env_type=env_type,evaluator=self._reward_config["original_grader"]) for x in response])  # ⭐ Create Task objects from the response and add to the task list
+            self._tasks.extend([Task(task_id=str(x),env_type=env_type,open_query=False,evaluator=self._reward_config["original_grader"]) for x in response])  # ⭐ Create Task objects from the response and add to the task list
             assert all([x.query is None for x in self._tasks]), "query of seed task must be empty"
             logger.info(f"loaded tasks from environment, #tasks={len(self._tasks)}")
         except requests.exceptions.RequestException as e:
@@ -460,10 +460,16 @@ class FullDataset(Dataset):
             with open(filepath, "r") as f:
                 self._synthetic_objectives = []
                 for line in filter(lambda x: x.strip() != "", f.readlines()):
-                    tmp=TaskObjective.parse_raw(line)
-                    # patch old data
+                    # patch old data: open query
+                    t=json.loads(line)
+                    assert 'task' in t
+                    if 'open_query' not in t['task']:
+                        t['task']['open_query'] = True # all synthetic data is open query
+                    
+                    # patch old data: ground_truth
+                    tmp=TaskObjective.parse_obj(t)
                     if tmp.ground_truth is None:
-                        tmp.ground_truth = json.loads(line)['ground_truth']  # ⭐ Patch old data by setting ground truth
+                        tmp.ground_truth = json.loads(line)['ground_truth']
                     self._synthetic_objectives.append(tmp)
         else:
             logger.warning(f"failed to load objectives from {filepath}, file not found.")

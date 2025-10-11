@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eu
 
 # 注意：
 # 请先执行文件：EnvService/env_sandbox/environments/bfcl/bfcl_dataprocess.py
@@ -14,7 +15,8 @@ LAUNCH_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_SERVICE_DIR="$(dirname "$LAUNCH_SCRIPT_DIR")"
 
 # 获取 bfcl 环境的目录
-BFCL_ENV_DIR="$ENV_SERVICE_DIR/environments/bfcl"
+DEFAULT_BFCL_ENV_DIR="$ENV_SERVICE_DIR/environments/bfcl"
+BFCL_ENV_DIR=${BFCL_ENV_DIR:-$DEFAULT_BFCL_ENV_DIR}
 
 export ENV_PATH="$BFCL_ENV_DIR"
 export BFCL_DATA_PATH="$BFCL_ENV_DIR/bfcl_data/multi_turn_base_processed.jsonl"
@@ -59,11 +61,11 @@ PROJECT_ROOT="$SCRIPT_DIR/../../"
 cd "$PROJECT_ROOT"
 
 # 设置 PYTHONPATH
-export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
 
 # 打印当前工作目录和 PYTHONPATH 以进行调试
 echo "Current working directory: $(pwd)"
 echo "PYTHONPATH: $PYTHONPATH"
 
 # 运行 Python 命令
-exec python -m env_service.env_service --env bfcl --portal 127.0.0.1 --port 8000
+exec python -m env_service.env_service --env bfcl --portal 127.0.0.1 --port 8080

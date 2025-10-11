@@ -388,10 +388,10 @@ class EnvHandler:
             model_name = self.model_name
             # from bfcl_eval.model_handler.api_inference.qwq import QwenAPIHandler
             from bfcl_eval.model_handler.api_inference.qwen import QwenAPIHandler #### qwq->qwen
-
-
+            
+            # FIXME: missing parameter is_fc_model and registry_name. I am not sure what they are for, so I just set them to False and original_model_name.
             handler = QwenAPIHandler(
-                self.model_name, temperature=1.0
+                self.model_name, temperature=1.0, is_fc_model=False, registry_name=self.original_model_name
             )  # FIXME: magic number
 
             model_result_data = self._convert_conversation_to_eval_format(

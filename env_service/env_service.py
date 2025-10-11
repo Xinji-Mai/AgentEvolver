@@ -11,6 +11,7 @@ interacting with them.
 """
 import argparse
 import asyncio
+from dataclasses import dataclass
 import importlib
 import os
 import sys
@@ -352,7 +353,7 @@ class EnvService:
         instance_id: str,
         action: Dict,
         params: Dict = None,
-    ) -> str:
+    ) -> dict:
         """
         Execute a step in the specified environment instance.
 
@@ -371,10 +372,12 @@ class EnvService:
         try:
             if instance_id not in self.env_actors:
                 raise ValueError(f"Instance {instance_id} not found!")
-            return await self.env_actors[instance_id].step.remote(
+            data = await self.env_actors[instance_id].step.remote(
                 action,
                 params,
             )
+            
+            return data
 
         except Exception as e:
             print(f"Error in step: {str(e)}")

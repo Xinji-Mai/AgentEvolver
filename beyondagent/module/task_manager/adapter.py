@@ -21,6 +21,7 @@ def convert_to_tasks(dataset:RLHFDataset,env_type:str, grader:str)->list[Task]:
         task = Task(
             task_id=record["extras"]["task_id"],
             env_type=env_type,
+            open_query=False,
             evaluator=grader,
         )
         res.append(task)
@@ -50,6 +51,7 @@ def to_rl_dataset(
             "uuid": str(uuid.uuid4()),
             "extras": {
                 "task_id": task.task_id,
+                "open_query": task.open_query,
                 "new_query": task.query,
                 "evaluator": task.evaluator,
                 "ground_truth": task_obj.ground_truth, # 用于提供给一些 grader 使用
