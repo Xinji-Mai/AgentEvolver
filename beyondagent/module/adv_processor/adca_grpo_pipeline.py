@@ -53,7 +53,7 @@ def apply_adca_grpo(
     enable_adca_grpo = getattr(attribution_cfg, 'enable', False)
     prm_cfg = getattr(attribution_cfg, "adca_grpo", None)
     enable_adca_metric = getattr(prm_cfg, 'enable_adca_metric', getattr(attribution_cfg, 'enable_adca_metric', False))
-    prm_epoch = getattr(prm_cfg, "prm_epoch", 100)
+    prm_steps = getattr(prm_cfg, "prm_steps", 100)
 
     # If neither metrics nor advantage overwriting is enabled, exit early.
     if not (enable_adca_metric or enable_adca_grpo):
@@ -126,8 +126,39 @@ def apply_adca_grpo(
         "prm/bad_steps_total": float(pos_bad + neg_bad),
     })
 
+    
     # --- Part C: PRM-GRPO Advantage Overwriting ---
-    if enable_adca_grpo and epoch < prm_epoch:
+    if enable_adca_grpo and global_steps < prm_steps:
+        # === (C0) Cosine decay alpha (no warmup) ===
+        import math
+
+        # 基础 α、下限与进度来源（优先显式 progress，其次 global_steps/total_steps）
+        alpha0 = float(getattr(prm_cfg, "alpha", 0.1))
+        use_cosine = bool(getattr(prm_cfg, "alpha_cosine_decay_enable", False))
+        if use_cosine:
+            alpha_min = float(getattr(prm_cfg, "alpha_min", 0.0))  # 可不配，默认 0
+
+            if getattr(prm_cfg, "alpha_progress", None) is not None:
+                p = float(getattr(prm_cfg, "alpha_progress"))
+            else:
+                total_steps = float(getattr(prm_cfg, "total_steps", 100))
+                p = float(global_steps / total_steps) if total_steps > 0 else 0.0
+
+            # clamp 到 [0,1]
+            p = 0.0 if p < 0.0 else 1.0 if p > 1.0 else p
+
+            # 纯余弦衰减（无 warmup）：alpha_t = alpha_min + 0.5*(alpha0 - alpha_min)*(1 + cos(pi*p))
+            alpha_t = alpha_min + 0.5 * (alpha0 - alpha_min) * (1.0 + math.cos(math.pi * p))
+
+            # 记录一下，便于监控
+            new_metrics.update({
+                "prm/alpha_base":     alpha0,
+                "prm/alpha_t":        float(alpha_t),
+                "prm/alpha_progress": float(p),
+            })
+        else:
+            alpha_t = alpha0
+        
         # === (C) PRM → GRPO Suffix Sum ===
         hyper = PRMHyper(
             consistent_scale=float(getattr(attribution_cfg, "consistent_scale", 1.0)),
@@ -136,7 +167,7 @@ def apply_adca_grpo(
             do_batch_norm=bool(getattr(prm_cfg, "do_batch_norm", True)),
             equal_trajectory_weight=bool(getattr(prm_cfg, "equal_trajectory_weight", True)),
             fix_base=float(getattr(prm_cfg, "fix_base", 0.2)),
-            alpha=float(getattr(prm_cfg, "alpha", 0.1)),
+            alpha=alpha_t,
             orm_distribution=getattr(prm_cfg, "orm_distribution", "last_step"),
             enable_length_normalization=getattr(prm_cfg, "enable_length_normalization", False),
         )

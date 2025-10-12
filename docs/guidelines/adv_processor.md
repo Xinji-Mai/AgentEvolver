@@ -170,7 +170,7 @@ These parameters directly influence the reward construction, fusion, and advanta
 **`orm_distribution`** (*str*)  
 : The **distribution method for the outcome reward (ORM)**. `"last_step"` (recommended) applies it only to the final step, while `"all_steps"` distributes it across all steps.
 
-**`prm_epoch`** (*int*)  
+**`prm_steps`** (*int*)  
 : **Enables attribution advantage for the first N epochs only**. This is an effective strategy for cost control, allowing the agent to rely on its learned policy in later training stages.
 
 **`enable_length_normalization`** (*bool*)  
@@ -229,7 +229,7 @@ attribution_driven_credit_assignment:
     orm_distribution: "last_step"
     
     # Balance effectiveness and API cost; enables attribution for the first 20 epochs
-    prm_epoch: 20
+    prm_steps: 20
     
     # Recommended to save API costs by not evaluating low-value trajectories
     skip_type: "skip_small_adv"

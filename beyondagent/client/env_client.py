@@ -68,7 +68,9 @@ class EnvClient:
             payload["params"] = params  # ⭐ Add additional parameters to the payload if provided
         response = self._make_request(
             endpoint="/get_env_profile", env_type=env_type, params={"split": split}
-        )  # ⭐ Make the request to the API endpoint
+        )  
+        logger.debug(f"get_env_profile split: {split}")
+        # ⭐ Make the request to the API endpoint
         return response["data"]  # ⭐ Return the list of task IDs from the response
 
     def get_tools_info(

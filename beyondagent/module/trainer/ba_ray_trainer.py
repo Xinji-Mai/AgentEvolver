@@ -485,14 +485,24 @@ class BeyondAgentRayPPOTrainer(RayPPOTrainer):
         else:
             self.train_task_manager.load_tasks_from_environment(env_client,env_type=self.config.env_service.env_type,split="train")
         # load val dataset
+        
         if self.config.data.val_files is not None:
             val_seed_dataset = create_rl_dataset(self.config.data.val_files, self.config.data, self.tokenizer, self.processor)
             assert isinstance(val_seed_dataset,RLHFDataset), "train_dataset must be RLHFDataset"
             self.val_task_manager.load_tasks_from_dataset(val_seed_dataset,env_type=self.config.env_service.env_type)
         else:
-            for split in ['val','dev']:
-                if self.val_task_manager.load_tasks_from_environment(env_client,env_type=self.config.env_service.env_type,split=split)>0:
-                    break
+            # shuchang: 'val' or 'test_normal' 为了便于切换成测试test_normal
+            if self.config.data.val_type == 'test_normal' and self.config.env_service.env_type == "appworld":
+                for split in ['test_normal']:
+                    logger.info(f"1 split {split}")
+                    print("^^^^^^^^^^^^^^^^split^^^^^^^^^^^^^^^^^^^", split)
+                    if self.val_task_manager.load_tasks_from_environment(env_client,env_type=self.config.env_service.env_type,split=split)>0:
+                        break
+            else:
+                for split in ['val','dev']:
+                    logger.info(f"2 split {split}")
+                    if self.val_task_manager.load_tasks_from_environment(env_client,env_type=self.config.env_service.env_type,split=split)>0:
+                        break
 
         self.train_dataset=self.train_task_manager.get_or_load_full_dataset(filepath=self.config.task_manager.train_data_path,tokenizer=self.tokenizer,config=self.config.data,processor=self.processor)
         # although limiting dataset to only the original is possibile with strategy, we want to avoid the rollout process on val data.

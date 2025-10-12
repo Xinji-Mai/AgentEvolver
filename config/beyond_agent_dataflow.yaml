@@ -12,6 +12,7 @@ data:
   train_batch_size: 256
   val_batch_size: 256
   return_raw_chat: True
+  val_type: 'val' # shuchang: 'val' or 'test_norm' 为了便于切换成测试test_norm
 
 actor_rollout_ref:
   hybrid_engine: True
@@ -136,9 +137,12 @@ attribution_driven_credit_assignment:
     do_batch_norm: true
     equal_trajectory_weight: true
     fix_base: 0.2
+    alpha_cosine_decay_enable: false   # true 或 false（关闭后就用常数 alpha）
     alpha: 0.1
+    alpha_min: 0.0      # 纯余弦的下限
+    total_steps: 100    # 训练总步数（用于 p = global_steps/total_steps）
     orm_distribution: last_step
     enable_length_normalization: false   # 控制是否进行长度正则化
-    prm_epoch: 100
+    prm_steps: 100
     skip_type: "none"               # "none" | "skip_small_adv" | "skip_all_neg"
     enable_adca_metric: false
