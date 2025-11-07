@@ -96,7 +96,8 @@ Convert raw trajectories into summarized experiences **asynchronously**, ensurin
 - Stores summarized results in the shared experience pool.
 
 ```python
-# ba_ray_trainer.py
+# Class: ExperienceManager
+# FUnction: submit_summary_task()
 summary_task = self.thread_pool.submit(
     self.em_client.call_summarizer,
     trajectories=trajectories,
