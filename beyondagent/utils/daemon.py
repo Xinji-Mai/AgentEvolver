@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import psutil
@@ -138,6 +139,7 @@ class LaunchWhenAbsent:
         """
         is_running, existing_process, pgid = self._is_script_running()
 
+
         if is_running:
             if force_restart:
                 print(f"Force restarting")
@@ -172,7 +174,7 @@ class LaunchWhenAbsent:
                         stderr=subprocess.STDOUT,
                         stdin=subprocess.DEVNULL,
                         cwd=self.dir,
-                        env={'ScriptHash': self.script_hash, **env_dict},
+                        env={'ScriptHash': self.script_hash,**os.environ, **env_dict},
                         start_new_session=True  # Start new session
                     )
                     f.close()  # Close append handle
@@ -205,7 +207,7 @@ class LaunchWhenAbsent:
                         stderr=subprocess.STDOUT,
                         stdin=subprocess.DEVNULL,
                         cwd="./",
-                        env={'ScriptHash': self.script_hash, **env_dict},
+                        env={'ScriptHash': self.script_hash,**os.environ, **env_dict},
                         start_new_session=True  # Start new session
                     )
                     f.close()  # Close append handle

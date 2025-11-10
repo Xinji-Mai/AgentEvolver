@@ -97,18 +97,25 @@ bash install.sh
 
 
 ### Step 2. Setup Env-Service (Appworld as example)
-The script below sets up an environment for appworld. For other environment setup, refer to [docs/guidelines/env_service.md](docs/guidelines/env_service.md) 📄
+The script below sets up an environment for appworld.
 
 ```bash
 cd env_service/environments/appworld && bash setup.sh
 ```
 
-### Step 3. Begin Training! 🚀 🚀
+### Step 3. (Setup ReMe?)
 
-Using AgentEvoler launcher to start environment, log dashboard and training process altogether. Refer to [docs/launcher.md](docs/launcher.md) for more launcher information.
+### Step 4. Begin Training! 🚀 🚀
+Copy the `example.env` file to `.env` and modify the parameters, including your **API key**, **conda path**.
+
+Using AgentEvoler launcher to start environment, log dashboard and training process altogether.
 
 ```bash
-python launcher.py --conf examples/self-question-attr.yaml --with-appworld --with-logview
+# minimal example
+python launcher.py --conf examples/self-question.yaml --with-appworld --with-logview
+
+# full example
+python launcher.py --conf examples/self-question-nav-attr.yaml --with-appworld --with-logview
 ```
 
 ## 🧩 Advanced Usage
