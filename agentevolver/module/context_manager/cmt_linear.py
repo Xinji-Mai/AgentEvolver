@@ -526,10 +526,10 @@ class Linear_CMT(Trajectory, ContextManagerBase):
             reward=f"{float(reward):.3f}",
             final_reward=final_reward,
             content=SeqItem(
-                text = buffer['text_arr'],  # 文本
-                title = buffer['text_arr'], # 鼠标悬浮文本
-                count = buffer['input_id_arr'], # 高亮文本
-                color = buffer['loss_mask_color_arr']   # 颜色
+                text = buffer['text_arr'],  # text
+                title = buffer['text_arr'], # mouse hover
+                count = buffer['input_id_arr'], # highlight text
+                color = buffer['loss_mask_color_arr']   # color
             )
         )
         print_nested(nested_items_print_buffer,  # ⭐ Print the nested JSON buffer

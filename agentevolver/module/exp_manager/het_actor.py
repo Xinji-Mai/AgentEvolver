@@ -156,7 +156,7 @@ class HETDataParallelPPOActor(DataParallelPPOActor):
                         log_prob=log_prob,
                         advantages=advantages,
                         response_mask=response_mask,
-                        exp_mask=exp_mask,   # (bs, response_length) ANNI add: 1表示是加了exp(off-policy); 0表示没加exp(on-policy)
+                        exp_mask=exp_mask,   # (bs, response_length) ANNI add: 1 w/ exp(off-policy); 0 w/o exp(on-policy)
                         cliprange=clip_ratio,
                         cliprange_low=clip_ratio_low,
                         cliprange_high=clip_ratio_high,

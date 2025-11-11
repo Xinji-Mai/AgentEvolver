@@ -1,5 +1,5 @@
 # shuchang: 0809
-# FIXME: 这个文件是step_parser.py，功能：把解析模型的response_id解析为step，统一所有需要step的模块
+# FIXME: This file is step_parser.py, function: parse model's response_id into steps, unify all modules that need steps
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 import torch
@@ -10,10 +10,10 @@ class StepParseResult:
     steps: List[Dict]            # [{'action_tokens': List[int], 'observation_tokens': List[int],
                                 #   'action_text': str, 'observation_text': str, 
                                 #   'action_start': int, 'action_end': int, 'obs_start': int, 'obs_end': int}]
-    step_ids: List[int]          # len == len(response_ids); assistant动作区间标k，其余-1
+    step_ids: List[int]          # len == len(response_ids); mark k for assistant action intervals, -1 for others
 
 def _find_first_subseq(hay, needle):
-    """安全的子序列搜索，避免单token误匹配"""
+    """Safe subsequence search, avoid single token mis-matching"""
     if not needle:
         return None
     L = len(needle)
@@ -23,8 +23,8 @@ def _find_first_subseq(hay, needle):
     return None
 
 def _locate_template_positions(tokens: List[int], tpl: List[int]) -> List[int]:
-    """返回 tpl 在 tokens 中出现的起点索引"""
-    if not tpl:  # 保护：避免空模板死循环
+    """Return the starting index positions where tpl appears in tokens"""
+    if not tpl:  # Protection: avoid infinite loop with empty template
         return []
     
     pos, out, L = 0, [], len(tpl)
@@ -38,25 +38,25 @@ def _locate_template_positions(tokens: List[int], tpl: List[int]) -> List[int]:
 
 def _extract_role_header_tokens(tokenizer, role: str) -> List[int]:
     """
-    通用方法：自动提取任何模型的role header tokens
-    原理：通过对比空内容和带内容的消息，找出role header部分
-    如果提取失败，直接抛出异常
+    Generic method: automatically extract role header tokens for any model
+    Principle: find the role header part by comparing empty content with content-filled messages
+    If extraction fails, throw an exception directly
     """
     try:
         if role == "assistant":
-            # 比较不带assistant回复 vs 带assistant回复的差异
+            # Compare differences between without assistant reply vs with assistant reply
             user_only = [{"role": "user", "content": ""}]
             user_tokens = tokenizer.apply_chat_template(
                 user_only, tokenize=True, add_generation_prompt=False
             )
             
-            # 带assistant的完整对话
+            # Complete dialog with assistant
             full_dialog = [{"role": "user", "content": ""}, {"role": "assistant", "content": "x"}]
             full_tokens = tokenizer.apply_chat_template(
                 full_dialog, tokenize=True, add_generation_prompt=False
             )
             
-            # 找到"x"的位置（使用安全的子序列搜索）
+            # Find the position of "x" (using safe subsequence search)
             x_tokens = tokenizer.encode("x", add_special_tokens=False)
             if not x_tokens:
                 raise ValueError(f"Cannot encode 'x' token for role {role}")
@@ -67,20 +67,20 @@ def _extract_role_header_tokens(tokenizer, role: str) -> List[int]:
                 raise ValueError(f"Cannot find 'x' token sequence in full dialog for role {role}")
             
             
-            # assistant header = 从user_only结束到"x"开始的部分
+            # assistant header = from end of user_only to start of "x"
             user_len = len(user_tokens)
             
             if user_len < x_position:
                 header_tokens = full_tokens[user_len:x_position]
                 return header_tokens
             elif user_len == x_position:
-                return []  # 返回空header，这是合法情况
+                return []  # Return empty header, this is a valid case
             else:
                 raise ValueError(f"Invalid token positions for role {role}: user_len={user_len}, x_pos={x_position}")
                 
         else:
-            # 对于user等其他角色：比较空内容vs带内容
-            # 关键修复：不要让user模板包含system message
+            # For user and other roles: compare empty content vs content-filled
+            # Key fix: don't let user template include system message
             empty_msg = [{"role": role, "content": ""}]
             empty_tokens = tokenizer.apply_chat_template(
                 empty_msg, tokenize=True, add_generation_prompt=False
@@ -91,7 +91,7 @@ def _extract_role_header_tokens(tokenizer, role: str) -> List[int]:
                 content_msg, tokenize=True, add_generation_prompt=False
             )
             
-            # 找到"x"的位置（使用安全的子序列搜索）
+            # Find the position of "x" (using safe subsequence search)
             x_tokens = tokenizer.encode("x", add_special_tokens=False)
             if not x_tokens:
                 raise ValueError(f"Cannot encode 'x' token for role {role}")
@@ -100,41 +100,41 @@ def _extract_role_header_tokens(tokenizer, role: str) -> List[int]:
             if x_position is None:
                 raise ValueError(f"Cannot find 'x' token sequence in content message for role {role}")
             
-            # 关键修复：用更精确的方法提取纯role header
-            # 对于content_msg，x前面的部分应该是role header
-            # 但如果empty_tokens包含了额外内容（如system），需要排除
+            # Key fix: use a more precise method to extract pure role header
+            # For content_msg, the part before x should be role header
+            # But if empty_tokens includes extra content (like system), need to exclude
             
             if len(content_tokens) > len(empty_tokens):
-                # 新增部分是 header + "x"
+                # Added part is header + "x"
                 added_part = content_tokens[len(empty_tokens):]
                 x_pos_in_added = _find_first_subseq(added_part, x_tokens)
                 if x_pos_in_added is not None:
                     header_tokens = added_part[:x_pos_in_added]
                 else:
-                    # fallback: 直接取x之前的部分
+                    # fallback: directly take the part before x
                     header_tokens = content_tokens[:x_position]
             else:
-                # 直接从开始到x位置
+                # directly from start to x position
                 header_tokens = content_tokens[:x_position]
             
-            # 额外验证：如果header太长（包含system message），尝试提取纯role部分
+            # Additional verification: if header is too long (contains system message), try to extract pure role part
             header_decoded = tokenizer.decode(header_tokens)
             
-            # 如果包含system message，尝试只取最后的role部分
+            # If contains system message, try to take only the last role part
             if f"<|im_start|>{role}" in header_decoded:
-                # 找到最后一个role标记的位置
+                # Find the position of the last role marker
                 role_marker = f"<|im_start|>{role}\n"
                 role_tokens = tokenizer.encode(role_marker, add_special_tokens=False)
                 
-                # 在header_tokens中找到role_tokens的位置
+                # Find the position of role_tokens in header_tokens
                 role_pos = _find_first_subseq(header_tokens, role_tokens)
                 if role_pos is not None:
-                    # 只取role标记部分
+                    # Only take the role marker part
                     header_tokens = role_tokens
             return header_tokens
             
     except Exception as e:
-        # 不要fallback，直接报错
+        # Don't fallback, throw error directly
         raise RuntimeError(f"Failed to extract header tokens for role '{role}': {e}") from e
 
 def parse_response_ids_to_steps(
@@ -144,28 +144,28 @@ def parse_response_ids_to_steps(
     user_tpl: List[int] = None,
     mark_observation: bool = False,
 ) -> StepParseResult:
-    # 1) 自动提取模板
+    # 1) Automatically extract templates
     if assistant_tpl is None:
         assistant_tpl = _extract_role_header_tokens(tokenizer, "assistant")
     if user_tpl is None:
         user_tpl = _extract_role_header_tokens(tokenizer, "user")
 
-    # 2) 定位 header 与 body
+    # 2) Locate headers and bodies
     a_hdr = _locate_template_positions(response_ids, assistant_tpl) if assistant_tpl else []
     u_hdr = _locate_template_positions(response_ids, user_tpl) if user_tpl else []
 
     a_body = [p + len(assistant_tpl) for p in a_hdr] if assistant_tpl else []
     u_body = [p + len(user_tpl) for p in u_hdr] if user_tpl else []
 
-    # 若序列开头没有任何 header，则视为从 assistant 内容开始
+    # If the sequence start has no headers, treat as starting from assistant content
     if response_ids:
         first_hdr = min(a_hdr[0] if a_hdr else len(response_ids),
                         u_hdr[0] if u_hdr else len(response_ids))
         if first_hdr > 0:
-            a_hdr = [0] + a_hdr         # 伪 header：用于结束边界
-            a_body = [0] + a_body       # 伪 body：用于开始边界
+            a_hdr = [0] + a_hdr         # Pseudo header: for end boundary
+            a_body = [0] + a_body       # Pseudo body: for start boundary
 
-    # 以“header 起点”作为切分的结束边界
+    # Use "header start" as the end boundary for splitting
     cut_bounds = sorted(a_hdr + u_hdr + [len(response_ids)])
 
     def next_cut(pos: int) -> int:
@@ -174,7 +174,7 @@ def parse_response_ids_to_steps(
                 return b
         return len(response_ids)
 
-    # 3) 按 body→(下一 header 起点) 构造 segments（不会吞到下个 header 的 "user"/"assistant"）
+    # 3) Construct segments by body→(next header start) (won't consume next header's "user"/"assistant")
     segs = []
     for s in a_body:
         e = next_cut(s)
@@ -189,7 +189,7 @@ def parse_response_ids_to_steps(
     if not segs:
         return StepParseResult([], [], [-1] * len(response_ids))
 
-    # 4) 合并相邻同 role 段
+    # 4) Merge adjacent segments with same role
     merged = []
     for seg in segs:
         if merged and merged[-1]["role"] == seg["role"] and merged[-1]["end"] == seg["start"]:
@@ -201,13 +201,13 @@ def parse_response_ids_to_steps(
                 "tokens": seg["tokens"].copy()
             })
 
-    # 丢弃开头非 assistant 的段
+    # Discard segments at the beginning that are not assistant
     while merged and merged[0]["role"] != "assistant":
         merged.pop(0)
     if not merged:
         return StepParseResult([], [], [-1] * len(response_ids))
 
-    # 5) 组 step（assistant 段 + 中间若干 user 段汇成 observation）
+    # 5) Form steps (assistant segment + several user segments in between form observation)
     steps = []
     i = 0
     while i < len(merged):
@@ -239,7 +239,7 @@ def parse_response_ids_to_steps(
         })
         i = j
 
-    # 6) 原位打 step_ids
+    # 6) Mark step_ids in place
     step_ids = [-1] * len(response_ids)
     for k, st in enumerate(steps):
         for pos in range(st["action_start"], st["action_end"]):
@@ -251,24 +251,24 @@ def parse_response_ids_to_steps(
     return StepParseResult(merged, steps, step_ids)
 
 
-# 添加验证函数
+# Add verification function
 def verify_step_alignment(batch, tokenizer, global_step):
-    """验证语义评估和advantage scaling的step对齐"""
+    """Verify step alignment between semantic evaluation and advantage scaling"""
     print(f"\n=== Step Alignment Check (Step {global_step}) ===")
     
     batch_size = len(batch.batch["prompts"])
     alignment_errors = 0
     
-    for sample_idx in range(min(5, batch_size)):  # 检查前5个样本
-        # 从语义评估获取的steps
+    for sample_idx in range(min(5, batch_size)):  # Check first 5 samples
+        # Steps from semantic evaluation
         semantic_steps = batch.non_tensor_batch["steps"][sample_idx]
-        
-        # 从step_ids获取的step数量
+
+        # Step count from step_ids
         step_ids = batch.batch["step_ids"][sample_idx]
         max_step_id = int(step_ids.max().item()) if (step_ids >= 0).any() else -1
         advantage_steps = max_step_id + 1 if max_step_id >= 0 else 0
         
-        # 检查对齐
+        # Check alignment
         semantic_count = len(semantic_steps)
         if semantic_count != advantage_steps:
             print(f"❌ Sample {sample_idx}: semantic={semantic_count}, advantage={advantage_steps}")
@@ -284,15 +284,15 @@ def verify_step_alignment(batch, tokenizer, global_step):
         return False
     
 def verify_step_content(batch, tokenizer, sample_idx=0):
-    """验证step内容的一致性"""
+    """Verify consistency of step content"""
     print(f"\n=== Step Content Check (Sample {sample_idx}) ===")
     
-    # 从batch获取
+    # Get from batch
     response_tokens = batch.batch["responses"][sample_idx].tolist()
     step_ids = batch.batch["step_ids"][sample_idx].tolist()
     semantic_steps = batch.non_tensor_batch["steps"][sample_idx]
     
-    # 重新解析验证
+    # Re-parse for verification
     from agentevolver.utils.step_parser import parse_response_ids_to_steps
     parse_result = parse_response_ids_to_steps(response_tokens, tokenizer)
     

@@ -122,7 +122,7 @@ class SelfContextClipCMT(LinearThinkCMT):
             str: The formatted and tagged message content.
         """
         from textwrap import dedent
-        assert 0 <= turn < 99, "turn 必须在 [0, 99) 范围内"
+        assert 0 <= turn < 99, "turn must be in the range [0, 99)"
         turn_id = f"{turn:03d}"
         self.latest_env_response_id = f"ER{turn_id}"  # ⭐ Update the latest environment response ID
         self.latest_env_response_content = content.strip()  # ⭐ Update the latest environment response content
@@ -148,7 +148,7 @@ class SelfContextClipCMT(LinearThinkCMT):
         """
         from textwrap import dedent
         assert not is_last, "llm message should never be last"  # ⭐ Ensures the LLM's message is not the last in the conversation
-        assert 0 <= turn < 99, "turn 必须在 [0, 99) 范围内"  # ⭐ Validates the turn number is within the valid range
+        assert 0 <= turn < 99, "turn must be in the range [0, 99)"  # ⭐ Validates the turn number is within the valid range
         turn_id = f"{turn:03d}"
         content = dedent(f"""
             [Assistant Response, id=AR{turn_id}]
@@ -191,9 +191,9 @@ class SelfContextClipCMT(LinearThinkCMT):
         llm_turn = 1
         for index, ext_msg in enumerate(list(self.latest_llm_interaction_socket)):
             is_last = (index == len(self.latest_llm_interaction_socket) - 1)
-            # 根据消息类型进行处理
+            # Process according to message type
             if ext_msg.author == "llm":
-                # 如果是以往的llm消息，去掉think标签
+                # If it's a previous llm message, remove think tags
                 new_ext_msg_content = self.strip_think_tags(ext_msg.content)
                 author_override = "llm(do_not_train)"
                 self.latest_llm_interaction_socket[index] = ExtendedMessage(

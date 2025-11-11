@@ -62,7 +62,7 @@ class MemoryCoreCMT(Linear_CMT):
 
 
         if is_first_interaction:
-            # 先解决第一次交互的特殊情况
+            # solve the first interaction
             part_1_instruction_array = self.filter_context_via_author("initialization")
             part_1_instruction_array += [
                 ExtendedMessage(

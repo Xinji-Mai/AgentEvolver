@@ -127,7 +127,7 @@ def bam_compute_token_on_off_policy_loss(
     log_prob,
     advantages,
     response_mask,
-    exp_mask,   # (bs, response_length) ANNI add: 1表示是加了exp(off-policy); 0表示没加exp(on-policy)
+    exp_mask,   # (bs, response_length) ANNI add: 1 indicates off-policy data; 0 indicates on-policy data
     cliprange=None,
     cliprange_low=None,
     cliprange_high=None,
@@ -155,10 +155,10 @@ def bam_compute_token_on_off_policy_loss(
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
-    # on-policy 不做任何改变
-    # off-policy: 分母=1 + reshape + 没有clip
+    # on-policy: no changes
+    # off-policy: denominator=1 + reshape + no clipping
 
-    # on-policy: 保持不变
+    # on-policy: keep unchanged
     ratio = torch.exp(negative_approx_kl)   # (bs, response_length)
     on_pg_losses1 = -advantages * ratio
     if cliprange_low is None:
@@ -208,7 +208,7 @@ def bam_compute_token_on_off_policy_loss_v2(
     log_prob,
     advantages,
     response_mask,
-    exp_mask,   # (bs, response_length) ANNI add: 1表示是加了exp(off-policy); 0表示没加exp(on-policy)
+    exp_mask,   # (bs, response_length) ANNI add: 1 indicates off-policy data; 0 indicates on-policy data
     cliprange=None,
     cliprange_low=None,
     cliprange_high=None,
@@ -236,10 +236,10 @@ def bam_compute_token_on_off_policy_loss_v2(
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
-    # on-policy 不做任何改变
-    # off-policy: 分母=1 + reshape + 没有clip
+    # on-policy: no changes
+    # off-policy: denominator=1 + reshape + no clipping
 
-    # on-policy: 保持不变
+    # on-policy: keep unchanged
     ratio = torch.exp(negative_approx_kl)   # (bs, response_length)
     on_pg_losses1 = -advantages * ratio
     if cliprange_low is None:
@@ -262,8 +262,8 @@ def bam_compute_token_on_off_policy_loss_v2(
     off_ratio = off_ratio / (off_ratio + 0.1)   # ⭐ Reshape the off-policy ratio
     off_pg_losses = -advantages * off_ratio
     ############
-    # ANNI add 0728: 对于A<0的负样本不计算loss梯度，将其loss_mask掉
-    off_positive_mask = (exp_mask > 0) & (advantages >=0) & (response_mask > 0) # 只包含off-policy且advantages>=0的mask
+    # ANNI add 0728: For negative samples with A<0, do not compute loss gradients, mask them out
+    off_positive_mask = (exp_mask > 0) & (advantages >=0) & (response_mask > 0) # mask containing only off-policy data with advantages>=0
     adjusted_off_pg_losses = torch.where(off_positive_mask, off_pg_losses, torch.zeros_like(off_pg_losses))
     off_pg_loss = verl_F.masked_mean(off_pg_losses, off_positive_mask)
     if torch.isnan(off_pg_loss).item():
@@ -294,7 +294,7 @@ def bam_compute_token_on_off_policy_loss_v3(
     log_prob,
     advantages,
     response_mask,
-    exp_mask,   # (bs, response_length) ANNI add: 1表示是加了exp(off-policy); 0表示没加exp(on-policy)
+    exp_mask,   # (bs, response_length) ANNI add: 1 indicates off-policy data; 0 indicates on-policy data
     cliprange=None,
     cliprange_low=None,
     cliprange_high=None,
@@ -322,10 +322,10 @@ def bam_compute_token_on_off_policy_loss_v3(
     negative_approx_kl = log_prob - old_log_prob
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
 
-    # on-policy 不做任何改变
-    # off-policy: cliphigh=1，其余和on-policy保持一致
+    # on-policy: no changes
+    # off-policy: cliphigh=1, rest kept consistent with on-policy
 
-    # on-policy: 保持不变
+    # on-policy: keep unchanged
     ratio = torch.exp(negative_approx_kl)   # (bs, response_length) ⭐ Compute the ratio of new to old policy probabilities
     on_pg_losses1 = -advantages * ratio
     if cliprange_low is None:

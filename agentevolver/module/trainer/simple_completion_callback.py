@@ -32,7 +32,7 @@ class SimpleCompletionCallback(CompletionCallback):
             logger.warning(str(completions.choices[0].finish_reason))
             logger.bind(bad_case=True).error('empty content or non-stop finish reason')
             logger.bind(bad_case=True).error(str(completions.choices[0]))
-            message['content'] == 'im_end'  # 遇到致命错误，填补一个token
+            message['content'] == 'im_end'  # fill a token when vllm failed
 
         t = {"role": message["role"], "request_id":completions.id, "content": message['content'], "tokens": [TokenAndProb(t) for t in completions.choices[0].logprobs.content]}
         messages.append(t)

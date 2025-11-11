@@ -1,6 +1,6 @@
 # Model files and checkpoints
 **/*.pt
-!important_models/*.pt  # 如果有重要模型需要跟踪，可以这样排除
+!important_models/*.pt  # Exclude important models that need to be tracked
 **/checkpoints
 **/*.ckpt
 *.lock
@@ -12,9 +12,9 @@
 **/wandb
 **/__pycache__/
 
-# Outputs and logs (更具体的规则)
+# Outputs and logs (more specific rules)
 **/outputs/
-!**/outputs/README.md  # 保留重要的说明文件
+!**/outputs/README.md  # Keep important README files
 **/logs/
 **/log/
 python_log/
@@ -22,7 +22,7 @@ experiments/
 
 # Development and testing
 **/playground/
-!**/playground/README.md  # 保留重要的说明文件
+!**/playground/README.md  # Keep important README files
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

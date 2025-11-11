@@ -134,16 +134,16 @@ class LinearThinkCMT(Linear_CMT):
             dict: The updated context in a dictionary format.
         """
         self.latest_llm_interaction_socket = []
-        # 筛选出 `初始message-user-llm-user-llm`` 或者 `初始message-llm-user-llm-user``
+        # Filter out `initial message-user-llm-user-llm` or `initial message-llm-user-llm-user`
         self.latest_llm_interaction_socket = self.filter_context_via_authors(["initialization", "llm", "env"])  # ⭐ Filter the context based on authors
 
         for index, ext_msg in enumerate(list(self.latest_llm_interaction_socket)):
-            # is_last 是最后一条信息
+            # is_last is the last message
             # remove history llm author's think (and add /no_think tag to every but last message)
             is_last = (index == len(self.latest_llm_interaction_socket) - 1)
-            # 根据消息类型进行处理
+            # Process based on message type
             if ext_msg.author == "llm":
-                # 如果是以往的llm消息，去掉think标签
+                # If it's a previous llm message, remove the think tags
                 import re
                 new_ext_msg_content = re.sub(r'<think>.*?</think>', '', ext_msg.content, flags=re.DOTALL).strip()  # ⭐ Remove <think> tags from the content
                 new_ext_msg_content = new_ext_msg_content.replace("<think>", "")
@@ -170,7 +170,7 @@ class LinearThinkCMT(Linear_CMT):
                     )
             elif ext_msg.author in ["env", "initialization"]:
                 if self.config.actor_rollout_ref.rollout.train_history_infer_token:
-                    # 如果是初始化或者环境反馈，都加上 /no_think 标签
+                    # If it's initialization or environment feedback, add /no_think tag
                     if not is_last:
                         self.latest_llm_interaction_socket[index] = ExtendedMessage(
                             author=ext_msg.author,
@@ -188,7 +188,7 @@ class LinearThinkCMT(Linear_CMT):
                             tokenizer=self.tokenizer,
                         )
                 else:
-                    # 如果是初始化或者环境反馈
+                    # If it's initialization or environment feedback
                     if not is_last:
                         self.latest_llm_interaction_socket[index] = ExtendedMessage(
                             author=ext_msg.author,
@@ -249,10 +249,10 @@ class LinearThinkCMT(Linear_CMT):
                 len_input_ids=len_input_ids,
                 reward=f"{float(reward):.3f}",
                 content=SeqItem(
-                    text=buffer['text_arr'],  # 文本
-                    title=buffer['text_arr'],  # 鼠标悬浮文本
-                    count=buffer['input_id_arr'],  # 高亮文本
-                    color=buffer['loss_mask_color_arr']  # 颜色
+                    text=buffer['text_arr'],  # Text
+                    title=buffer['text_arr'],  # Hover text
+                    count=buffer['input_id_arr'],  # Highlighted text
+                    color=buffer['loss_mask_color_arr']  # Color
                 )
             )
         print_nested(nested_items_print_buffer,

@@ -183,11 +183,11 @@ class LaunchWhenAbsent:
                     import base64
 
                     def string_to_base64(s):
-                        # 首先将字符串编码为字节
+                        # encode into bytes
                         s_bytes = s.encode('utf-8')
-                        # 将字节转换为 base64
+                        # to base64
                         base64_bytes = base64.b64encode(s_bytes)
-                        # 将 base64 字节转换回字符串
+                        # to string
                         base64_string = base64_bytes.decode('utf-8')
                         return base64_string
 
